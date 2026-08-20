@@ -29,11 +29,14 @@ jobs:
   # Update VERSION file with tag version
   update-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Update VERSION file
+        id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION=${{ github.event.inputs.tag }}
@@ -42,6 +45,7 @@ jobs:
             VERSION=${GITHUB_REF#refs/tags/v}
           fi
           echo "$VERSION" > backend/cmd/server/VERSION
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Updated VERSION file to: $VERSION"
 
       - name: Upload VERSION artifact
@@ -84,9 +88,14 @@ jobs:
           path: backend/internal/web/dist/
           retention-days: 1
 
+  # GoReleaser 只负责交叉编译二进制并创建 GitHub Release；
+  # Docker 镜像由后续原生 runner job 用这里的二进制打包（Dockerfile.goreleaser），
+  # arm64 不再经过 QEMU 模拟构建
   release:
     needs: [update-version, build-frontend]
     runs-on: ubuntu-latest
+    outputs:
+      tag_message: ${{ steps.tag_message.outputs.message }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -116,29 +125,6 @@ jobs:
       - name: Verify Go version
         run: |
           go version | grep -q 'go1.26.6'
-
-      # Docker setup for GoReleaser
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to DockerHub
-        if: ${{ env.DOCKERHUB_USERNAME != '' }}
-        uses: docker/login-action@v3
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch tags with annotations
         run: |
@@ -185,6 +171,238 @@ jobs:
           GITHUB_REPO_NAME: ${{ github.event.repository.name }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'skip' }}
 
+      # 打包 linux 二进制交给 Docker job 打镜像，保证镜像与 Release 资产同源
+      - name: Package linux binaries for Docker jobs
+        run: |
+          mkdir -p release-bins/amd64 release-bins/arm64
+          cp dist/sub2api_linux_amd64*/sub2api release-bins/amd64/sub2api
+          if [ -f dist/sub2api_linux_arm64/sub2api ]; then
+            cp dist/sub2api_linux_arm64/sub2api release-bins/arm64/sub2api
+          fi
+          ls -l release-bins/amd64 release-bins/arm64
+
+      - name: Upload linux binaries artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-binaries
+          path: release-bins/
+          retention-days: 1
+
+  # 在原生 amd64 runner 上打包预编译二进制，无需任何模拟
+  build-docker-amd64:
+    needs: [update-version, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Download linux binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-binaries
+          path: release-bins
+
+      # Dockerfile.goreleaser 从构建上下文根目录 COPY 二进制
+      - name: Prepare build context
+        run: cp release-bins/amd64/sub2api ./sub2api
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to DockerHub
+        if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # tag 规则沿用原 GoReleaser 配置：完整模式打 <version>-amd64 中转 tag
+      # （GHCR + DockerHub），simple 模式单架构直接打正式 tag（仅 GHCR）
+      - name: Resolve image tags
+        id: tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          VERSION="${{ needs.update-version.outputs.version }}"
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          if [ "${{ env.SIMPLE_RELEASE }}" = "true" ]; then
+            TAGS="ghcr.io/${OWNER_LC}/sub2api:${VERSION}"$'\n'"ghcr.io/${OWNER_LC}/sub2api:latest"
+          else
+            TAGS="ghcr.io/${OWNER_LC}/sub2api:${VERSION}-amd64"
+            if [ -n "$DOCKERHUB_USERNAME" ]; then
+              TAGS+=$'\n'"${DOCKERHUB_USERNAME}/sub2api:${VERSION}-amd64"
+            fi
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.goreleaser
+          platforms: linux/amd64
+          cache-from: type=gha,scope=release-amd64
+          cache-to: type=gha,mode=max,scope=release-amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.update-version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+  # 在 GitHub 原生 arm64 runner 上打包，替代原先 QEMU 在 x64 上的模拟构建
+  build-docker-arm64:
+    needs: [update-version, release]
+    if: ${{ !(github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Download linux binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-binaries
+          path: release-bins
+
+      - name: Prepare build context
+        run: cp release-bins/arm64/sub2api ./sub2api
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve image tags
+        id: tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          VERSION="${{ needs.update-version.outputs.version }}"
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          TAGS="ghcr.io/${OWNER_LC}/sub2api:${VERSION}-arm64"
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            TAGS+=$'\n'"${DOCKERHUB_USERNAME}/sub2api:${VERSION}-arm64"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.goreleaser
+          platforms: linux/arm64
+          cache-from: type=gha,scope=release-arm64
+          cache-to: type=gha,mode=max,scope=release-arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.update-version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+  # 合并两个架构为多架构 tag（version / latest / major.minor / major）
+  docker-manifest:
+    needs: [update-version, build-docker-amd64, build-docker-arm64]
+    if: ${{ !(github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifests
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          VERSION="${{ needs.update-version.outputs.version }}"
+          MAJOR="${VERSION%%.*}"
+          MINOR="$(echo "$VERSION" | cut -d. -f2)"
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+
+          REGISTRIES="ghcr.io/${OWNER_LC}/sub2api"
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            REGISTRIES+=$'\n'"${DOCKERHUB_USERNAME}/sub2api"
+          fi
+
+          while IFS= read -r IMAGE; do
+            for TAG in "$VERSION" "latest" "${MAJOR}.${MINOR}" "${MAJOR}"; do
+              echo "Creating manifest ${IMAGE}:${TAG}"
+              docker manifest create "${IMAGE}:${TAG}" \
+                "${IMAGE}:${VERSION}-amd64" \
+                "${IMAGE}:${VERSION}-arm64"
+              docker manifest push "${IMAGE}:${TAG}"
+            done
+          done <<< "$REGISTRIES"
+
+  # 镜像就绪后再更新 DockerHub 描述与发送通知；
+  # simple 模式下 arm64/manifest 会被跳过（skipped），失败则不通知
+  notify:
+    needs: [release, build-docker-amd64, build-docker-arm64, docker-manifest]
+    if: ${{ !failure() && !cancelled()
+      && needs.release.result == 'success'
+      && needs.build-docker-amd64.result == 'success'
+      && needs.build-docker-arm64.result != 'failure'
+      && needs.docker-manifest.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
       # Update DockerHub description
       - name: Update DockerHub description
         if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' }}
@@ -223,7 +441,7 @@ jobs:
           GHCR_IMAGE="ghcr.io/${REPO,,}"  # ${,,} converts to lowercase
 
           # 获取 tag message 内容并转义 Markdown 特殊字符
-          TAG_MESSAGE='${{ steps.tag_message.outputs.message }}'
+          TAG_MESSAGE='${{ needs.release.outputs.tag_message }}'
           TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')
 
           # 限制消息长度（Telegram 消息限制 4096 字符，预留空间给头尾固定内容）

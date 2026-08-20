@@ -1,0 +1,125 @@
+name: Docker CI
+
+# 跟随 main 分支的 GHCR 镜像构建：
+#   - 每次 push 到 main 都在原生 runner 上构建 amd64 + arm64（无 QEMU 模拟），
+#     合并为多架构镜像发布 latest 与 sha-<短哈希> 两个 tag —— 使用者无需等待
+#     release 即可拉到包含最新修复的镜像，也能用 sha tag 锁定/回滚到确切 commit；
+#   - 每周定时清理旧的 sha- tag（保留最近 30 个，release tag 全部保留）。
+#     GHCR 对公开仓库的存储与带宽免费，清理只是版本列表卫生，不是成本控制。
+# amd64/arm64 各自单独构建再合并 manifest，两个架构互不拖慢。
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# 排队而不取消：进行中的构建必须完成后再跑下一个，否则 latest 可能乱序
+concurrency:
+  group: docker-ci
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      # GHCR 要求镜像名全小写，repository 可能含大写 owner
+      - name: Resolve image name and short SHA
+        run: |
+          echo "IMAGE=ghcr.io/${REPO,,}" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+        env:
+          REPO: ${{ github.repository }}
+
+      # 用固定的 <tag>-<arch> 作为中转 tag，随构建覆盖，不会随时间累积
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=ci-build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ci-build-${{ matrix.arch }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE }}:latest-${{ matrix.arch }}
+            ${{ env.IMAGE }}:sha-${{ env.SHORT_SHA }}-${{ matrix.arch }}
+          build-args: |
+            COMMIT=${{ env.SHORT_SHA }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          labels: |
+            org.opencontainers.image.title=sub2api
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Create and push multi-arch manifests
+        run: |
+          IMAGE="ghcr.io/${REPO,,}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          for TAG in "latest" "sha-${SHORT_SHA}"; do
+            echo "Creating manifest ${IMAGE}:${TAG}"
+            docker manifest create "${IMAGE}:${TAG}" \
+              "${IMAGE}:${TAG}-amd64" \
+              "${IMAGE}:${TAG}-arm64"
+            docker manifest push "${IMAGE}:${TAG}"
+          done
+        env:
+          REPO: ${{ github.repository }}
+
+  # 只删 sha- 前缀的版本（main 分支构建），release tag 通过 ignore-versions 全部保留；
+  # latest 指向的 manifest 必然在最近构建之内，min-versions-to-keep 会保住它
+  cleanup:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Prune old sha- tagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: sub2api
+          package-type: container
+          min-versions-to-keep: 30
+          ignore-versions: '^(?!sha-)'

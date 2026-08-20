@@ -65,7 +65,8 @@ volumes:
 
 ## Tags
 
-- `latest` - Latest stable release
+- `latest` - Latest release; on GHCR it follows the latest `main` branch commit (fixes land here before they are released)
+- `sha-<commit>` (GHCR only) - Build of an exact `main` branch commit, for pinning or rolling back
 - `x.y.z` - Specific version
 - `x.y` - Latest patch of minor version
 - `x` - Latest minor of major version

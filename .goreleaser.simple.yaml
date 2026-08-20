@@ -36,25 +36,9 @@ checksum:
 changelog:
   disable: true
 
-# 仅 GHCR x86_64 镜像
-dockers:
-  - id: ghcr-amd64
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}"
-      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:latest"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    extra_files:
-      - deploy/docker-entrypoint.sh
-      - backend/resources
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .Commit }}"
-      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
+# 仅 GHCR x86_64 镜像，由 release workflow 的 amd64 job 构建推送
+# （见 .github/workflows/release.yml 的 build-docker-amd64）
+dockers: []
 
 # 跳过 manifests（单架构不需要）
 docker_manifests: []

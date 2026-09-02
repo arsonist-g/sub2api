@@ -424,6 +424,63 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 	return maskedBody, nil
 }
 
+// MaskSessionIDOnly 仅做会话 ID 伪装：将 body 中 metadata.user_id 的 session
+// 段替换为账号级固定伪装 ID（15 分钟滑动 TTL，与 RewriteUserIDWithMasking
+// 共用缓存）。与 RewriteUserIDWithMasking 的区别是不做常规 user_id 重写，
+// 供 Zhipu GLM 的 anthropic 协议透传路径使用，客户端身份其余部分保持原样。
+func (s *IdentityService) MaskSessionIDOnly(ctx context.Context, body []byte, account *Account, fingerprintUA string) []byte {
+	if len(body) == 0 || account == nil || !account.IsSessionIDMaskingEnabled() {
+		return body
+	}
+
+	metadata := gjson.GetBytes(body, "metadata")
+	if !metadata.Exists() || metadata.Type == gjson.Null {
+		return body
+	}
+	if !strings.HasPrefix(strings.TrimSpace(metadata.Raw), "{") {
+		return body
+	}
+
+	userIDResult := metadata.Get("user_id")
+	if !userIDResult.Exists() || userIDResult.Type != gjson.String {
+		return body
+	}
+	userID := userIDResult.String()
+	if userID == "" {
+		return body
+	}
+
+	uidParsed := ParseMetadataUserID(userID)
+	if uidParsed == nil {
+		return body
+	}
+
+	maskedSessionID, err := s.cache.GetMaskedSessionID(ctx, account.ID)
+	if err != nil {
+		logger.LegacyPrintf("service.identity", "Warning: failed to get masked session ID for account %d: %v", account.ID, err)
+		return body
+	}
+	if maskedSessionID == "" {
+		maskedSessionID = generateRandomUUID()
+	}
+	// 每次请求都刷新 TTL，保持 15 分钟有效期
+	if setErr := s.cache.SetMaskedSessionID(ctx, account.ID, maskedSessionID); setErr != nil {
+		logger.LegacyPrintf("service.identity", "Warning: failed to set masked session ID for account %d: %v", account.ID, setErr)
+	}
+
+	version := ExtractCLIVersion(fingerprintUA)
+	newUserID := FormatMetadataUserID(uidParsed.DeviceID, uidParsed.AccountUUID, maskedSessionID, version)
+	if newUserID == userID {
+		return body
+	}
+
+	maskedBody, setErr := sjson.SetBytes(body, "metadata.user_id", newUserID)
+	if setErr != nil {
+		return body
+	}
+	return maskedBody
+}
+
 // generateRandomUUID 生成随机 UUID v4 格式字符串
 func generateRandomUUID() string {
 	b := make([]byte, 16)

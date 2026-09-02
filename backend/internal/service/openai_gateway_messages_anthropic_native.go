@@ -73,6 +73,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	body = StripEmptyTextBlocks(body)
 	body = FilterWebSearchHistoryBlocks(body, upstreamModel)
 
+	// Zhipu 会话 ID 伪装：改写 metadata.user_id 的会话段（仅 zhipu 账号且
+	// 决策命中时），使上游将一段时间内的请求视为同一会话。
+	if d := zhipuSpoofDecisionFromContext(ctx); d != nil && d.MaskSession && s.identityService != nil {
+		body = s.identityService.MaskSessionIDOnly(ctx, body, account, c.Request.UserAgent())
+	}
+
 	logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] account=%d(%s) platform=%s model=%s upstream=%s stream=%v",
 		account.ID, account.Name, account.Platform, originalModel, upstreamModel, clientStream)
 

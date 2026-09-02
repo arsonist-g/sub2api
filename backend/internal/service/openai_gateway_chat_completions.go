@@ -108,6 +108,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// Zhipu 伪装决策（TLS 指纹 / 会话 ID / 排除平台），见 zhipu_spoofing.go。
+	// 未识别平台 + 非 Anthropic 入站 → 强制走 GLM 原生 Anthropic 端点
+	// （CC→Anthropic 转换链），不使用自适应或 CC 端点。
+	ctx = s.resolveZhipuSpoofDecision(ctx, c.Request.UserAgent(), account)
+	if d := zhipuSpoofDecisionFromContext(ctx); d != nil && d.ForceAnthropic {
+		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// Cursor compatibility: some clients send a Responses-shaped body to the
 	// /v1/chat/completions URL. Detect it before adaptive routing so adaptive
 	// accounts never forward the body unchanged to a Chat Completions endpoint.

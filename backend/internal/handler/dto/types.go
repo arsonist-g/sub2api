@@ -269,6 +269,10 @@ type Account struct {
 	// 从 extra 字段提取，方便前端显示和编辑
 	EnableSessionIDMasking *bool `json:"session_id_masking_enabled,omitempty"`
 
+	// 伪装排除平台（仅 Zhipu GLM 账号有效）
+	// 列表中的客户端工具不生效 TLS 指纹模拟与会话 ID 伪装
+	SpoofExcludedPlatforms []string `json:"spoof_excluded_platforms,omitempty"`
+
 	// 缓存 TTL 强制替换（仅 Anthropic OAuth/SetupToken 账号有效）
 	// 启用后将所有 cache creation tokens 归入指定的 TTL 类型计费
 	CacheTTLOverrideEnabled *bool   `json:"cache_ttl_override_enabled,omitempty"`

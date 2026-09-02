@@ -452,6 +452,10 @@ type OpenAIGatewayService struct {
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
+	// zhipu 账号伪装决策依赖（handler 层 setter 注入）
+	tlsFPProfileService *TLSFingerprintProfileService
+	identityService     *IdentityService
+
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once
 	openaiSchedulerOnce            sync.Once

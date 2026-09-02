@@ -157,7 +157,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// CN 供应商 anthropic 协议账号：/v1/responses 入站是交叉协议组合
 	// （Responses 客户端 × Anthropic 上游），转成 Anthropic 请求走原生端点。
 	// 不能落到下面的 raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
-	if account.IsAnthropicProtocol() {
+	// Zhipu 伪装决策：未识别平台 + 非 Anthropic 入站 → 强制走 GLM 原生
+	// Anthropic 端点（Responses→Anthropic 转换链），见 zhipu_spoofing.go。
+	ctx = s.resolveZhipuSpoofDecision(ctx, c.Request.UserAgent(), account)
+	zd := zhipuSpoofDecisionFromContext(ctx)
+	if account.IsAnthropicProtocol() || (zd != nil && zd.ForceAnthropic) {
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	}
 	if account.IsOpenAIApiKey() {

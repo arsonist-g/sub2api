@@ -6,14 +6,30 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager
 }
 
+// SetTLSFingerprintProfileService 注入 TLS 指纹模板服务，供 zhipu 账号伪装
+// 决策解析 profile 使用（handler 层 setter 注入，走 wire provider）。
+func (s *OpenAIGatewayService) SetTLSFingerprintProfileService(service *TLSFingerprintProfileService) {
+	s.tlsFPProfileService = service
+}
+
+// SetIdentityService 注入身份服务，供 zhipu anthropic 协议透传路径做会话
+// ID 伪装使用（handler 层 setter 注入，走 wire provider）。
+func (s *OpenAIGatewayService) SetIdentityService(service *IdentityService) {
+	s.identityService = service
+}
+
 // doOpenAIUpstream 只在 OpenAI OAuth 能力绑定已启用时把真实请求交给插件。
 // 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
+// zhipu 账号带伪装决策（ctx 中 TLSProfile 非 nil）时改走 DoWithTLS。
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
 			return response, err
 		}
+	}
+	if d := zhipuSpoofDecisionFromContext(request.Context()); d != nil && d.TLSProfile != nil {
+		return s.httpUpstream.DoWithTLS(request, proxyURL, account.ID, account.Concurrency, d.TLSProfile)
 	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
 }

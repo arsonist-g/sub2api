@@ -48,7 +48,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
 	// 必须先于 ShouldUseResponsesAPI 分流：Anthropic 协议账号经 probe 落标
 	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
-	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
+	ctx = s.resolveZhipuSpoofDecision(ctx, c.Request.UserAgent(), account)
+	// zhipu 未识别平台 + chat_completions 协议账号：强制走原生 Anthropic 端点，
+	// 使 TLS 指纹与会话 ID 伪装在 anthropic 协议上同时生效。
+	d := zhipuSpoofDecisionFromContext(ctx)
+	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() || (d != nil && d.ForceAnthropic) {
 		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
 	}
 

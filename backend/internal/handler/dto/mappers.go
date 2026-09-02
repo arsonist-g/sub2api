@@ -334,6 +334,24 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	// Zhipu GLM 伪装配置（TLS 指纹 / 会话 ID / 排除平台）
+	if a.IsZhipu() {
+		if a.IsTLSFingerprintEnabled() {
+			enabled := true
+			out.EnableTLSFingerprint = &enabled
+		}
+		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
+			out.TLSFingerprintProfileID = &profileID
+		}
+		if a.IsSessionIDMaskingEnabled() {
+			enabled := true
+			out.EnableSessionIDMasking = &enabled
+		}
+		if platforms := a.GetSpoofExcludedPlatforms(); len(platforms) > 0 {
+			out.SpoofExcludedPlatforms = platforms
+		}
+	}
+
 	// 提取账号配额限制（apikey / bedrock 类型有效）
 	if a.IsAPIKeyOrBedrock() {
 		if limit := a.GetQuotaLimit(); limit > 0 {

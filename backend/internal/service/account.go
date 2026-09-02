@@ -2319,11 +2319,11 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 }
 
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 适用于 Anthropic OAuth/SetupToken 账号与 Zhipu GLM 账号
 // 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	// 支持 Anthropic OAuth/SetupToken 与 Zhipu 账号
+	if !a.IsAnthropicOAuthOrSetupToken() && !a.IsZhipu() {
 		return false
 	}
 	if a.Extra == nil {
@@ -2335,6 +2335,33 @@ func (a *Account) IsTLSFingerprintEnabled() bool {
 		}
 	}
 	return false
+}
+
+// GetSpoofExcludedPlatforms 获取 Zhipu GLM 账号的伪装排除平台列表
+// 列表中的客户端工具不生效 TLS 指纹模拟与会话 ID 伪装；
+// 识别不出的平台不在列表语义内，按未排除处理
+func (a *Account) GetSpoofExcludedPlatforms() []string {
+	if !a.IsZhipu() || a.Extra == nil {
+		return nil
+	}
+	v, ok := a.Extra["spoof_excluded_platforms"]
+	if !ok {
+		return nil
+	}
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	platforms := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok && s != "" {
+			platforms = append(platforms, s)
+		}
+	}
+	if len(platforms) == 0 {
+		return nil
+	}
+	return platforms
 }
 
 // GetTLSFingerprintProfileID 获取账号绑定的 TLS 指纹模板 ID
@@ -2383,11 +2410,11 @@ func (a *Account) GetUserMsgQueueMode() string {
 }
 
 // IsSessionIDMaskingEnabled 检查是否启用会话ID伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 适用于 Anthropic OAuth/SetupToken 账号与 Zhipu GLM 账号
 // 启用后将在一段时间内（15分钟）固定 metadata.user_id 中的 session ID，
 // 使上游认为请求来自同一个会话
 func (a *Account) IsSessionIDMaskingEnabled() bool {
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if !a.IsAnthropicOAuthOrSetupToken() && !a.IsZhipu() {
 		return false
 	}
 	if a.Extra == nil {

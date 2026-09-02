@@ -128,10 +128,14 @@ func ProvideOpenAIGatewayHandler(
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
 	grokQuotaService *service.GrokQuotaService,
+	tlsFPProfileService *service.TLSFingerprintProfileService,
+	identityService *service.IdentityService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
+	gatewayService.SetTLSFingerprintProfileService(tlsFPProfileService)
+	gatewayService.SetIdentityService(identityService)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator

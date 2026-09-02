@@ -577,6 +577,85 @@
         <p class="input-hint mt-2">{{ t('admin.accounts.cnProviders.zhipuTeam.hint') }}</p>
       </div>
 
+      <!-- Zhipu 伪装配置：TLS 指纹 / 会话 ID / 排除平台 -->
+      <div v-if="form.platform === 'zhipu'" class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.zhipuSpoof.title') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.zhipuSpoof.hint') }}</p>
+        <div class="mt-3 space-y-4">
+          <!-- TLS 指纹模拟 -->
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}</span>
+            </div>
+            <button
+              type="button"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="tlsFingerprintEnabled">
+            <select v-model="tlsFingerprintProfileId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+          <!-- 会话 ID 伪装 -->
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.quotaControl.sessionIdMasking.label') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.zhipuSpoof.sessionMaskingHint') }}</span>
+            </div>
+            <button
+              type="button"
+              @click="sessionIdMaskingEnabled = !sessionIdMaskingEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionIdMaskingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionIdMaskingEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <!-- 伪装排除平台（多选） -->
+          <div v-if="tlsFingerprintEnabled || sessionIdMaskingEnabled">
+            <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.zhipuSpoof.excludedTitle') }}</span>
+            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <label
+                v-for="opt in ZHIPU_SPOOF_PLATFORM_OPTIONS"
+                :key="opt.value"
+                class="flex cursor-pointer items-center gap-2 rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <input
+                  v-model="zhipuSpoofExcludedPlatforms"
+                  type="checkbox"
+                  :value="opt.value"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+                />
+                <span class="truncate">{{ t(`admin.accounts.cnProviders.zhipuSpoof.platforms.${opt.labelKey}`) }}</span>
+              </label>
+            </div>
+            <p class="input-hint mt-2">{{ t('admin.accounts.cnProviders.zhipuSpoof.excludedHint') }}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Account Type Selection (Gemini) -->
       <div v-if="form.platform === 'gemini'">
         <div class="flex items-center justify-between">
@@ -3831,6 +3910,7 @@ import {
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import { ZHIPU_SPOOF_PLATFORM_OPTIONS } from '@/constants/zhipuSpoofPlatforms'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -4405,6 +4485,8 @@ const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
+// Zhipu 伪装排除平台（value 为平台 slug，与后端检测表一致）
+const zhipuSpoofExcludedPlatforms = ref<string[]>([])
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
@@ -5167,6 +5249,7 @@ const resetForm = () => {
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
   sessionIdMaskingEnabled.value = false
+  zhipuSpoofExcludedPlatforms.value = []
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
   customBaseUrlEnabled.value = false
@@ -5643,7 +5726,24 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  let extra = buildAnthropicExtra(buildOpenAIExtra())
+
+  // Zhipu 伪装配置写入 extra（TLS 指纹 / 会话 ID / 排除平台）
+  if (form.platform === 'zhipu') {
+    extra = { ...(extra ?? {}) }
+    if (tlsFingerprintEnabled.value) {
+      extra.enable_tls_fingerprint = true
+      if (tlsFingerprintProfileId.value) {
+        extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+      }
+    }
+    if (sessionIdMaskingEnabled.value) {
+      extra.session_id_masking_enabled = true
+    }
+    if (zhipuSpoofExcludedPlatforms.value.length > 0) {
+      extra.spoof_excluded_platforms = [...zhipuSpoofExcludedPlatforms.value]
+    }
+  }
 
   await doCreateAccount({
     ...form,

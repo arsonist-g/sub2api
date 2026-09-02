@@ -251,6 +251,13 @@
           </div>
         </template>
 
+        <!-- 输出速度：output_tokens / (总耗时 - 首字延迟)，纯前端估算生成阶段吞吐；缺首字或无剩余耗时时显示 - -->
+        <template #cell-speed="{ row }">
+          <span class="text-sm font-medium tabular-nums text-gray-700 dark:text-gray-300" :class="{ 'text-gray-400 dark:text-gray-500': !isOutputSpeedAvailable(row) }">
+            {{ formatOutputSpeed(row) }}
+          </span>
+        </template>
+
         <template #cell-created_at="{ value }">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
@@ -710,6 +717,21 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+// 输出速度（tokens/s）= 输出 token 数 / (总耗时 - 首字延迟)，只反映生成阶段吞吐；
+// 缺首字数据，或扣除后无剩余时间（含异常数据 first_token >= duration）时不可用
+const isOutputSpeedAvailable = (row: AdminUsageLog): boolean =>
+  (row.output_tokens ?? 0) > 0 &&
+  row.duration_ms != null && row.duration_ms > 0 &&
+  row.first_token_ms != null &&
+  row.duration_ms - row.first_token_ms > 0
+
+const formatOutputSpeed = (row: AdminUsageLog): string => {
+  const { output_tokens: out, duration_ms: duration, first_token_ms: firstToken } = row
+  if (!out || out <= 0 || duration == null || firstToken == null || duration - firstToken <= 0) return '-'
+  const speed = out / ((duration - firstToken) / 1000)
+  return `${speed >= 100 ? Math.round(speed) : speed.toFixed(1)} t/s`
 }
 
 // Cost tooltip functions

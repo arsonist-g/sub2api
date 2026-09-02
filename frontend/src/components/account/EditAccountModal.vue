@@ -4511,6 +4511,20 @@ function loadQuotaControlSettings(account: Account) {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
 
+  // TLS 指纹 / 会话 ID 伪装 / Zhipu 排除平台对 Anthropic 与 Zhipu 账号都生效，
+  // 必须在 anthropic-only 的 early return 之前回显，否则 Zhipu 账号编辑时开关恒为关，
+  // 再保存会把已生效的伪装配置清掉
+  if (account.enable_tls_fingerprint === true) {
+    tlsFingerprintEnabled.value = true
+  }
+  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
+
+  if (account.session_id_masking_enabled === true) {
+    sessionIdMaskingEnabled.value = true
+  }
+
+  zhipuSpoofExcludedPlatforms.value = account.spoof_excluded_platforms ? [...account.spoof_excluded_platforms] : []
+
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
     return
@@ -4544,20 +4558,6 @@ function loadQuotaControlSettings(account: Account) {
 
   // UMQ mode（独立于 RPM 加载，防止编辑无 RPM 账号时丢失已有配置）
   userMsgQueueMode.value = account.user_msg_queue_mode ?? ''
-
-  // Load TLS fingerprint setting
-  if (account.enable_tls_fingerprint === true) {
-    tlsFingerprintEnabled.value = true
-  }
-  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
-
-  // Load session ID masking setting
-  if (account.session_id_masking_enabled === true) {
-    sessionIdMaskingEnabled.value = true
-  }
-
-  // Load Zhipu spoof excluded platforms
-  zhipuSpoofExcludedPlatforms.value = account.spoof_excluded_platforms ? [...account.spoof_excluded_platforms] : []
 
   // Load cache TTL override setting
   if (account.cache_ttl_override_enabled === true) {

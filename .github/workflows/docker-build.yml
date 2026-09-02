@@ -1,0 +1,98 @@
+name: Build and Push sub2api-fork image
+
+# 构建本 fork（arsonist-g/sub2api）自身的多架构镜像并推送 GHCR。
+# 镜像名为 ghcr.io/arsonist-g/sub2api-fork —— ghcr.io/arsonist-g/sub2api 已被
+# sub2api-monitor 仓库的上游自动构建占用，两个镜像仓库名必须互不重叠。
+# amd64 / arm64 各自在原生 runner 上构建（Dockerfile 为 BUILDPLATFORM 交叉
+# 编译，无需 QEMU），最后合并为多架构 manifest。
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # 推送 GHCR
+
+concurrency:
+  group: docker-build
+  cancel-in-progress: false   # 排队不取消，避免两个构建互相覆盖 latest
+
+env:
+  IMAGE: ghcr.io/arsonist-g/sub2api-fork
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      # 用固定的 latest-<arch> / sha-<arch> 作为中转 tag，随构建覆盖，不会累积
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=build-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.arch }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE }}:latest-${{ matrix.arch }}
+            ${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }}
+          build-args: |
+            COMMIT=${{ github.sha }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          labels: |
+            org.opencontainers.image.title=sub2api-fork
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=Build of arsonist-g/sub2api fork main
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Create and push multi-arch manifests
+        run: |
+          docker manifest create "${IMAGE}:latest" \
+            "${IMAGE}:latest-amd64" \
+            "${IMAGE}:latest-arm64"
+          docker manifest push "${IMAGE}:latest"
+
+          docker manifest create "${IMAGE}:${{ github.sha }}" \
+            "${IMAGE}:${{ github.sha }}-amd64" \
+            "${IMAGE}:${{ github.sha }}-arm64"
+          docker manifest push "${IMAGE}:${{ github.sha }}"

@@ -220,7 +220,8 @@ jobs:
           fi
           VERSION=${TAG_NAME#v}
           REPO="${{ github.repository }}"
-          GHCR_IMAGE="ghcr.io/${REPO,,}"  # ${,,} converts to lowercase
+          # fork 专用镜像名（ghcr.io/arsonist-g/sub2api 已被 sub2api-monitor 占用）
+          GHCR_IMAGE="ghcr.io/${REPO,,}-fork"  # ${,,} converts to lowercase
 
           # 获取 tag message 内容并转义 Markdown 特殊字符
           TAG_MESSAGE='${{ steps.tag_message.outputs.message }}'
@@ -256,7 +257,7 @@ jobs:
           if [ -n "$DOCKERHUB_USERNAME" ]; then
             MESSAGE+="• [Docker Hub](https://hub.docker.com/r/${DOCKER_IMAGE})"$'\n'
           fi
-          MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/sub2api)"$'\n'$'\n'
+          MESSAGE+="• [GitHub Packages](https://github.com/${REPO}/pkgs/container/sub2api-fork)"$'\n'$'\n'
           MESSAGE+="#Sub2API #Release #${TAG_NAME//./_}"
 
           # 发送消息

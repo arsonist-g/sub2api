@@ -92,6 +92,8 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
 	}
+	// OpenCode Zen 网关的 reasoning_effort 合法档位逐模型不同，出站前统一钳制。
+	upstreamBody = clampOpenCodeChatReasoningEffort(account, upstreamBody)
 
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)

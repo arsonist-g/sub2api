@@ -48,6 +48,8 @@ const (
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformComposite = domain.PlatformComposite
+	// OpenCode Zen/Go 网关，同经 OpenAI 网关转发（见 domain 层注释）。
+	PlatformOpenCode = domain.PlatformOpenCode
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
@@ -77,6 +79,16 @@ const (
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
 )
 
+// OpenCode 默认 base_url。coding = Go 订阅（opencode.ai/zen/go），payg = 按量
+// Zen（opencode.ai/zen/v1，与 Go 共用 workspace key，无用量/余额 API）。
+// anthropic 协议的 base 不带 /v1（上游路径为 {base}/v1/messages）。
+const (
+	DefaultOpenCodeCodingBaseURL          = "https://opencode.ai/zen/go/v1"
+	DefaultOpenCodeCodingAnthropicBaseURL = "https://opencode.ai/zen/go"
+	DefaultOpenCodePayGBaseURL            = "https://opencode.ai/zen/v1"
+	DefaultOpenCodePayGAnthropicBaseURL   = "https://opencode.ai/zen"
+)
+
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
@@ -86,10 +98,11 @@ const (
 	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为经 OpenAI 网关转发的 OpenAI 兼容供应商
+// （国产 kimi/zhipu/deepseek 与 OpenCode Zen/Go 网关）。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformOpenCode:
 		return true
 	default:
 		return false
@@ -108,17 +121,20 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformOpenCode,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
-// openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
-// 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// openai/anthropic/grok 有原生用量窗口；kimi/zhipu/opencode 的订阅同样暴露
+// 5h/weekly（opencode 另有 monthly）滚动窗口，纳入阈值评估。deepseek 为余额型，
+// 走余额检测而非阈值。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
 	PlatformGrok,
 	PlatformKimi,
 	PlatformZhipu,
+	PlatformOpenCode,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

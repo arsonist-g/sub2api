@@ -107,6 +107,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        opencode: 'OpenCode',
       },
       cnProviders: {
         accountMode: {
@@ -178,8 +179,9 @@ export default {
         balance: 'Balance --',
         window5h: '5h',
         windowWeekly: '7d',
+        windowMonthly: '30d',
         probe: 'Query',
-        probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
+        probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly (OpenCode also monthly) rolling window usage',
         balanceProbeTooltip: 'Query the provider balance endpoint for the account balance',
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',

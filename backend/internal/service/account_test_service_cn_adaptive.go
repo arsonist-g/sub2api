@@ -19,11 +19,16 @@ const accountTestSuppressCompletionContextKey = "account_test_suppress_completio
 
 // testCNProviderAdaptiveConnection verifies every native endpoint used by an
 // adaptive CN-provider account. Zhipu uses Chat Completions plus Anthropic;
-// DeepSeek and Kimi additionally use their native Responses endpoints.
+// DeepSeek and Kimi additionally use their native Responses endpoints;
+// OpenCode 三端点（chat / anthropic / responses）全部探测。
 func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+		if account.Platform == PlatformOpenCode {
+			// OpenCode 目录无 gpt-* 系列官方价卡模型，统一用最轻量的官方目录模型。
+			testModelID = "deepseek-v4-flash"
+		}
 	}
 	testModelID = account.GetMappedModel(testModelID)
 
@@ -219,6 +224,10 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
 		testModelID = claude.DefaultTestModel
+		if account.Platform == PlatformOpenCode {
+			// OpenCode 目录无 claude-* 模型，统一用最轻量的官方目录模型。
+			testModelID = "deepseek-v4-flash"
+		}
 	}
 	testModelID = account.GetMappedModel(testModelID)
 

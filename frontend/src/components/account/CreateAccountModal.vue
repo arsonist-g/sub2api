@@ -202,6 +202,19 @@
             <PlatformIcon platform="deepseek" size="sm" />
             DeepSeek
           </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('opencode')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'opencode'
+                ? 'bg-white text-lime-600 shadow-sm dark:bg-dark-600 dark:text-lime-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="opencode" size="sm" />
+            OpenCode
+          </button>
         </div>
       </div>
 
@@ -3996,6 +4009,8 @@ const apiKeyValuePlaceholder = computed(() => {
       return '<api-key>.<secret>'
     case 'deepseek':
       return 'sk-...'
+    case 'opencode':
+      return 'ocsk-...'
     default:
       return 'sk-ant-...'
   }
@@ -4098,12 +4113,12 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   responses: ''
 })
 const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
+  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode'
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode'>(() => {
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode') {
     return form.platform
   }
   return 'kimi'
@@ -4129,7 +4144,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
   return opts
 })
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
+function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode', mode: CnAccountMode) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
@@ -4141,6 +4156,8 @@ const cnAccentActiveClass = computed(() => {
       return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
     case 'deepseek':
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    case 'opencode':
+      return 'border-lime-500 bg-lime-50 dark:bg-lime-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4153,19 +4170,25 @@ const cnAccentIconClass = computed(() => {
       return 'bg-indigo-500 text-white'
     case 'deepseek':
       return 'bg-teal-500 text-white'
+    case 'opencode':
+      return 'bg-lime-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
+// opencode 的主形态是 Go 订阅故默认 coding（按量 Zen 可手动切回 payg），
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode') {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
   apiProtocol.value = 'adaptive'
   if (platform === 'deepseek') {
     accountMode.value = 'payg'
+  }
+  if (platform === 'opencode') {
+    accountMode.value = 'coding'
   }
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
   resetAdaptiveBaseUrls(platform, accountMode.value)
@@ -5652,11 +5675,11 @@ const handleSubmit = async () => {
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
   // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode') {
     credentials.account_mode = accountMode.value
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {
-      const defaults = defaultCNAdaptiveBaseUrls(form.platform, accountMode.value)
+      const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
       const protocolBaseUrls: Record<string, string> = {}
       for (const item of cnAdaptiveProtocolOptions.value) {
         protocolBaseUrls[item.value] = (adaptiveBaseUrls.value[item.value] || defaults[item.value]).trim()

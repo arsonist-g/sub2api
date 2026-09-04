@@ -332,6 +332,11 @@ func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Cont
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+		if account.Platform == PlatformOpenCode {
+			// OpenCode 目录无 gpt-* 系列官方价卡模型，用最轻量的官方目录模型
+			// 做连通性测试（与 cc-switch 预设的默认路由一致）。
+			testModelID = "deepseek-v4-flash"
+		}
 	}
 	testModelID = account.GetMappedModel(testModelID)
 

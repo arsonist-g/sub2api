@@ -28,6 +28,10 @@ const (
 	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
 	PlatformDeepseek  = "deepseek" // DeepSeek
 	PlatformComposite = "composite"
+	// OpenCode Zen/Go 网关（经 OpenAI 网关转发；三组端点：Anthropic Messages
+	// /zen/go/v1/messages、Chat Completions /zen/go/v1/chat/completions、
+	// Responses /zen/go/v1/responses，订阅与按量共用同一套协议形态）。
+	PlatformOpenCode = "opencode"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。

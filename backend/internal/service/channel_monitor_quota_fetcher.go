@@ -221,6 +221,13 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
+	case domain.PlatformOpenCode:
+		// OpenCode Go 订阅有用量端点；按量 Zen 无任何用量/余额 API，
+		// payg 账号在创建/更新期已被 monitorAccountQuotaCapability 拦截。
+		if account.IsCodingPlan() {
+			return f.fetchCNQuota(ctx, account, now)
+		}
+		return f.fetchUsage(ctx, account, now)
 	default:
 		return f.fetchUsage(ctx, account, now)
 	}

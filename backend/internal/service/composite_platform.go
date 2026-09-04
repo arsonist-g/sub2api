@@ -87,6 +87,9 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 // DetectModelPlatform maps common public model IDs to the concrete provider
 // platform used by sub2api. It intentionally returns false for ambiguous model
 // names so composite groups fail closed instead of guessing.
+// OpenCode 的模型名（glm-*/kimi-*/deepseek-* 等）与国产原生平台同名，刻意不做
+// 自动识别：composite 分组须经显式路由表（composite_model_routes）指向 opencode，
+// 否则同名模型会被错误路由到 zhipu/kimi/deepseek 平台。
 func DetectModelPlatform(model string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if normalized == "" {
@@ -195,7 +198,7 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
 	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformOpenCode:
 		return true
 	default:
 		return false

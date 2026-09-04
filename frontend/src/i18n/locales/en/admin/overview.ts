@@ -972,6 +972,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        opencode: 'OpenCode',
         composite: 'Composite',
       },
       deleteConfirm:

@@ -190,6 +190,31 @@ const moonshotModels = [
   'kimi-k2'
 ]
 
+// OpenCode Zen/Go 网关（与后端 opencode_models.go 的官方目录清单一致）
+const opencodeModels = [
+  'grok-4.5',
+  'gpt-5.6-luna',
+  'muse-spark-1.2-contributor',
+  'glm-5.3',
+  'glm-5.2',
+  'glm-5.1',
+  'kimi-k3',
+  'kimi-k2.7-code',
+  'kimi-k2.6',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'mimo-v2.5',
+  'mimo-v2.5-pro',
+  'hy3',
+  'minimax-m3',
+  'minimax-m2.7',
+  'minimax-m2.5',
+  'qwen3.8-max',
+  'qwen3.7-max',
+  'qwen3.7-plus',
+  'qwen3.6-plus'
+]
+
 // 字节跳动 豆包
 const doubaoModels = [
   'doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-pro-4k',
@@ -255,7 +280,8 @@ const allModelsList: string[] = [
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
-  ...perplexityModels
+  ...perplexityModels,
+  ...opencodeModels
 ]
 
 // 转换为下拉选项格式
@@ -438,6 +464,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'yi': return yiModels
     case 'moonshot':
     case 'kimi': return moonshotModels
+    case 'opencode': return opencodeModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels

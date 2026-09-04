@@ -466,7 +466,8 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      opencode: 'OpenCode'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {
@@ -483,6 +484,7 @@ export default {
         '7dSonnet': '7d Sonnet',
         '7dFable': '7d Fable',
         weekly: 'Weekly',
+        monthly: 'Monthly',
         daily: 'Daily',
         '30d': '30d',
         total: 'Total'

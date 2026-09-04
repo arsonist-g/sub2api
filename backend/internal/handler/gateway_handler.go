@@ -1223,7 +1223,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformOpenCode} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
@@ -1461,6 +1461,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return claude.DefaultModelIDs()
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformOpenCode:
+		return service.OpenCodeDefaultModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})

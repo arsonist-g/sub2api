@@ -80,6 +80,8 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody
 	}
+	// OpenCode Zen 网关的 reasoning_effort 合法档位逐模型不同，出站前统一钳制。
+	chatBody = clampOpenCodeChatReasoningEffort(account, chatBody)
 	if account.Platform == PlatformOpenAI {
 		policyBody, changed, policyErr := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody)
 		if policyErr != nil {

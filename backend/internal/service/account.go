@@ -285,17 +285,19 @@ func (a *Account) IsDeepseek() bool {
 	return a.Platform == PlatformDeepseek
 }
 
-// IsCNProvider 报告是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告是否为经 OpenAI 网关转发的 OpenAI 兼容供应商
+// （国产 kimi/zhipu/deepseek 与 OpenCode Zen/Go 网关）。
 func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
-// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
-// 兼容上游，也经 OpenAI 网关转发。
+// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek/opencode 同为 OpenAI
+// Chat Completions 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek ||
+		a.Platform == PlatformOpenCode)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1330,7 +1332,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
-// 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
+// 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/opencode）；grok 走 GetGrokBaseURL，
 // 此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() && !a.IsCNProvider() {
@@ -1362,6 +1364,11 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformOpenCode:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultOpenCodeCodingBaseURL
+		}
+		return DefaultOpenCodePayGBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1410,13 +1417,14 @@ func (a *Account) GetAPIProtocol() string {
 
 // SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
 // DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）。
+// /v1/responses（moonshot.cn / kimi.com/coding）；OpenCode 为 /v1/responses
+// （opencode.ai/zen/go[/v1]，responses 组模型 grok-4.5 / gpt-5.6-luna 走该端点）。
 func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
 	}
 	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi:
+	case PlatformDeepseek, PlatformKimi, PlatformOpenCode:
 		return true
 	default:
 		return false
@@ -1477,6 +1485,11 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuAnthropicBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekAnthropicBaseURL
+		case PlatformOpenCode:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultOpenCodeCodingAnthropicBaseURL
+			}
+			return DefaultOpenCodePayGAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1492,6 +1505,11 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuPayGBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekBaseURL
+		case PlatformOpenCode:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultOpenCodeCodingBaseURL
+			}
+			return DefaultOpenCodePayGBaseURL
 		}
 	}
 	return ""
@@ -1528,6 +1546,11 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultZhipuAnthropicBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekAnthropicBaseURL
+	case PlatformOpenCode:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultOpenCodeCodingAnthropicBaseURL
+		}
+		return DefaultOpenCodePayGAnthropicBaseURL
 	default:
 		return ""
 	}
@@ -1555,6 +1578,11 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformOpenCode:
+		if a.GetAccountMode() == AccountModeCoding {
+			return DefaultOpenCodeCodingBaseURL
+		}
+		return DefaultOpenCodePayGBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}
@@ -1569,9 +1597,10 @@ func (a *Account) GetCNAPIKey() string {
 	return a.GetCredential("api_key")
 }
 
-// GetCodingPlanProvider 根据 base_url 识别 Coding Plan 供应商（kimi / zhipu），
+// GetCodingPlanProvider 根据 base_url 识别 Coding Plan 供应商（kimi / zhipu / opencode），
 // 用于路由到对应的额度查询端点。非 coding 模式或无法识别时返回空串。
-// 判定规则与 cc-switch coding_plan.rs::detect_provider 保持一致。
+// 判定规则与 cc-switch coding_plan.rs::detect_provider 保持一致：opencode 用
+// 子串 opencode.ai/zen/go 命中 Go 订阅，刻意不命中按量 Zen 的 /zen/v1（无用量 API）。
 func (a *Account) GetCodingPlanProvider() string {
 	if a == nil || a.GetAccountMode() != AccountModeCoding {
 		return ""
@@ -1582,6 +1611,8 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
+	case strings.Contains(baseURL, "opencode.ai/zen/go"):
+		return PlatformOpenCode
 	default:
 		return ""
 	}

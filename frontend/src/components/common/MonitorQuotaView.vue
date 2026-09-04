@@ -75,6 +75,7 @@ const windowI18nKeys: Record<string, string> = {
   '7d-sonnet': 'monitorCommon.quota.windows.7dSonnet',
   '7d-fable': 'monitorCommon.quota.windows.7dFable',
   weekly: 'monitorCommon.quota.windows.weekly',
+  monthly: 'monitorCommon.quota.windows.monthly',
   daily: 'monitorCommon.quota.windows.daily',
   '30d': 'monitorCommon.quota.windows.30d',
   total: 'monitorCommon.quota.windows.total',

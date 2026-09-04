@@ -18,14 +18,17 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi For Coding / 智谱 GLM Coding Plan）。
+// 国产供应商 Coding Plan 滚动窗口额度探测服务（Kimi For Coding / 智谱 GLM Coding
+// Plan / OpenCode Go 订阅）。
 //
 // 与 grok_quota_service 不同：CN 供应商走数据面 API Key（无 OAuth token provider），
-// 额度端点为只读 GET，解析 5h + weekly 两档滚动窗口并落 account.Extra 快照，
-// 供账号调度阈值评估（account_scheduling_threshold_eval.go）做主动停调。
+// 额度端点为只读 GET，解析 5h + weekly（OpenCode 另有 monthly）滚动窗口并落
+// account.Extra 快照，供账号调度阈值评估（account_scheduling_threshold_eval.go）
+// 做主动停调。
 //
 // 解析逻辑对齐 cc-switch（farion1231/cc-switch）services/coding_plan.rs 的
-// query_kimi / query_zhipu，包括智谱 unit 字段优先分类与 reset 兜底启发式。
+// query_kimi / query_zhipu / query_opencode_go，包括智谱 unit 字段优先分类与
+// reset 兜底启发式、OpenCode percent=0 丢弃占位 resetsAt。
 const (
 	cnQuotaUpstreamTimeout = 15 * time.Second
 	cnQuotaMaxBodyBytes    = 256 * 1024
@@ -35,15 +38,17 @@ const (
 	cnExtraSuffix5hReset      = "5h_reset_at"
 	cnExtraSuffixWeeklyUsed   = "weekly_used_percent"
 	cnExtraSuffixWeeklyReset  = "weekly_reset_at"
+	cnExtraSuffixMonthlyUsed  = "monthly_used_percent"
+	cnExtraSuffixMonthlyReset = "monthly_reset_at"
 	cnExtraSuffixUsageUpdated = "usage_updated_at"
 )
 
 // cnExtraKey 拼接 provider 维度的 extra 键。
 func cnExtraKey(provider, suffix string) string { return provider + "_" + suffix }
 
-// CNQuotaTier 表示一个滚动用量窗口档位（5h / weekly）。
+// CNQuotaTier 表示一个滚动用量窗口档位（5h / weekly / monthly）。
 type CNQuotaTier struct {
-	Window      string  `json:"window"`             // "5h" | "weekly"
+	Window      string  `json:"window"`             // "5h" | "weekly" | "monthly"
 	UsedPercent float64 `json:"used_percent"`       // 已用百分比（0-100+，不做裁剪）
 	ResetAt     string  `json:"reset_at,omitempty"` // RFC3339，空表示无重置时间
 }
@@ -129,8 +134,10 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu coding plan account")
+	switch provider {
+	case PlatformKimi, PlatformZhipu, PlatformOpenCode:
+	default:
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/opencode coding plan account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -147,6 +154,11 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	switch provider {
 	case PlatformKimi:
 		targetURL = kimiQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	case PlatformOpenCode:
+		// OpenCode Go 用量端点只认 Authorization: Bearer——与推理侧 /v1/messages
+		// 只认 x-api-key 正好相反，不能互换。
+		targetURL = opencodeUsageURL(baseURL)
 		authHeader = "Bearer " + apiKey
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
@@ -207,6 +219,12 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		// 鉴权失败：不落快照（不覆盖之前的有效值），仅返回失败结果供前端提示。
+		// OpenCode：401 = key 无效；403 = key 有效（Zen 与 Go 共用 workspace key）
+		// 但该 workspace 无 Go 订阅，与认证失败分开提示。
+		if resp.StatusCode == http.StatusForbidden && provider == PlatformOpenCode {
+			result.Error = "API key is valid but has no OpenCode Go subscription (HTTP 403)"
+			return result, nil
+		}
 		result.Error = fmt.Sprintf("Authentication failed (HTTP %d)", resp.StatusCode)
 		return result, nil
 	}
@@ -234,6 +252,14 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
+	case PlatformOpenCode:
+		tiers = parseOpenCodeUsageTiers(bodyBytes)
+		// 三个窗口一个都没解析出来 = 响应形态不认识（该端点未文档化，上游
+		// 已改过一次形态），明确报错而不是渲染一张空卡片。
+		if len(tiers) == 0 {
+			result.Error = "Unexpected usage response shape"
+			return result, nil
+		}
 	}
 	result.Tiers = tiers
 	result.Success = true
@@ -305,6 +331,15 @@ func kimiQuotaURL(baseURL string) string {
 	return base + "/v1/usages"
 }
 
+// opencodeUsageURL 根据 base_url 解析 OpenCode Go 用量端点。
+// 端点为第一方但未文档化的 GET /zen/go/v1/usage；coding（/zen/go/v1）与
+// anthropic（/zen/go）两种 base 统一剥掉尾部 /v1 后拼回 /v1/usage，
+// 协议切换不影响探测端点。
+func opencodeUsageURL(baseURL string) string {
+	base := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
+	return base + "/v1/usage"
+}
+
 func zhipuQuotaHost(baseURL string) string {
 	switch u := strings.ToLower(baseURL); {
 	case strings.Contains(u, "bigmodel.cn"):
@@ -369,6 +404,52 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 		})
 	}
 
+	return tiers
+}
+
+// parseOpenCodeUsageTiers 解析 OpenCode Go 用量端点响应。
+//
+// 响应形态（上游 console 的 zen/go/v1/usage 路由）：
+// {"usage":{"rolling"|"weekly"|"monthly":{"status":"ok"|"rate-limited",
+// "percent":0-100 已用整数,"resetsAt":ISO8601}}}，三窗口对应文档口径
+// $12/5h、$30/周、$60/月（端点不回传金额，仅百分比）。
+//
+// 端点未文档化且上线当天改过一次形态，故逐窗口防御解析：缺失或 percent
+// 不可解析的窗口跳过，不整体失败。status=="rate-limited" 时上游已把 percent
+// 钉在 100，无需特判；percent 为 0 时上游的 resetsAt 是「now+窗口时长」的
+// 占位值（窗口早已过期），丢弃不展示。
+func parseOpenCodeUsageTiers(body []byte) []CNQuotaTier {
+	windows := []struct {
+		key  string
+		tier string
+	}{
+		{"rolling", "5h"},
+		{"weekly", "weekly"},
+		{"monthly", "monthly"},
+	}
+	var tiers []CNQuotaTier
+	usage := gjson.GetBytes(body, "usage")
+	if !usage.IsObject() {
+		return nil
+	}
+	for _, w := range windows {
+		window := usage.Get(w.key)
+		if !window.IsObject() {
+			continue
+		}
+		percent, ok := cnParseF64(window.Get("percent").Value())
+		if !ok {
+			continue
+		}
+		tier := CNQuotaTier{
+			Window:      w.tier,
+			UsedPercent: percent,
+		}
+		if percent > 0 {
+			tier.ResetAt = cnNormalizeResetTime(window.Get("resetsAt").Value())
+		}
+		tiers = append(tiers, tier)
+	}
 	return tiers
 }
 
@@ -524,6 +605,11 @@ func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) ma
 			updates[cnExtraKey(provider, cnExtraSuffixWeeklyUsed)] = t.UsedPercent
 			if t.ResetAt != "" {
 				updates[cnExtraKey(provider, cnExtraSuffixWeeklyReset)] = t.ResetAt
+			}
+		case "monthly":
+			updates[cnExtraKey(provider, cnExtraSuffixMonthlyUsed)] = t.UsedPercent
+			if t.ResetAt != "" {
+				updates[cnExtraKey(provider, cnExtraSuffixMonthlyReset)] = t.ResetAt
 			}
 		}
 	}

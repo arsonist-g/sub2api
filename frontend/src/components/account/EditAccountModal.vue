@@ -3085,7 +3085,7 @@ const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 
-// ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
+// ── 国产供应商（Kimi / Zhipu / DeepSeek / OpenCode）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
 // 二者均可修正（早期创建的账号可能存错默认值），切换时重置 base_url 预置。
 const isCNApiKeyAccount = computed(
@@ -3093,13 +3093,14 @@ const isCNApiKeyAccount = computed(
     props.account?.type === 'apikey' &&
     (props.account.platform === 'kimi' ||
       props.account.platform === 'zhipu' ||
-      props.account.platform === 'deepseek')
+      props.account.platform === 'deepseek' ||
+      props.account.platform === 'opencode')
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
+const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode'>(() => {
   const platform = props.account?.platform
-  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek') {
+  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'opencode') {
     return platform
   }
   return 'kimi'
@@ -3653,9 +3654,10 @@ const defaultBaseUrl = computed(() => {
   if (
     props.account?.platform === 'kimi' ||
     props.account?.platform === 'zhipu' ||
-    props.account?.platform === 'deepseek'
+    props.account?.platform === 'deepseek' ||
+    props.account?.platform === 'opencode'
   ) {
-    return defaultCNBaseUrl(props.account.platform, editAccountMode.value, editApiProtocol.value)
+    return defaultCNBaseUrl(cnPresetPlatform.value, editAccountMode.value, editApiProtocol.value)
   }
   return 'https://api.anthropic.com'
 })
@@ -4019,7 +4021,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
-    if (newAccount.platform === 'kimi' || newAccount.platform === 'zhipu' || newAccount.platform === 'deepseek') {
+    if (
+      newAccount.platform === 'kimi' ||
+      newAccount.platform === 'zhipu' ||
+      newAccount.platform === 'deepseek' ||
+      newAccount.platform === 'opencode'
+    ) {
       editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -4032,7 +4039,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       if (!cnSupportsNativeResponses(newAccount.platform) && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       }
-      const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, editAccountMode.value)
+      const adaptivePlatform =
+        newAccount.platform === 'kimi' ||
+        newAccount.platform === 'zhipu' ||
+        newAccount.platform === 'deepseek' ||
+        newAccount.platform === 'opencode'
+          ? newAccount.platform
+          : 'kimi'
+      const adaptiveDefaults = defaultCNAdaptiveBaseUrls(adaptivePlatform, editAccountMode.value)
       const storedBaseUrls = (credentials.api_base_urls as Record<string, unknown> | undefined) || {}
       const legacyBaseUrl = typeof credentials.base_url === 'string' ? credentials.base_url.trim() : ''
       const storedChatBaseUrl = typeof storedBaseUrls.chat_completions === 'string'
@@ -4078,8 +4092,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : newAccount.platform === 'kimi' ||
                 newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek'
-              ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
+                newAccount.platform === 'deepseek' ||
+                newAccount.platform === 'opencode'
+              ? defaultCNBaseUrl(cnPresetPlatform.value, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions

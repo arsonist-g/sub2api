@@ -62,6 +62,8 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
 	case PlatformZhipu:
 		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
+	case PlatformOpenCode:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformOpenCode), threshold, now)
 	default:
 		return decision
 	}
@@ -349,11 +351,12 @@ func grokThresholdCandidates(account *Account) []*accountSchedulingThresholdCand
 	}
 }
 
-// cnProviderThresholdCandidates 读取国产供应商 Coding Plan 账号的 5h / weekly 滚动窗口
-// 用量快照（由 CNProviderQuotaService 写入 account.Extra，键形如
-// <provider>_5h_used_percent / <provider>_weekly_reset_at）。payg 账号无此快照，
-// 候选为空 → 不触发阈值停调（余额型走余额检测）。与 openai 的快照驱动停调一致：
-// 仅当用量超阈值且窗口尚未重置时才停调。
+// cnProviderThresholdCandidates 读取国产供应商 Coding Plan 账号的 5h / weekly
+// 滚动窗口用量快照（由 CNProviderQuotaService 写入 account.Extra，键形如
+// <provider>_5h_used_percent / <provider>_weekly_reset_at）。OpenCode Go 另有
+// monthly 窗口快照，一并参与阈值评估。payg 账号无此快照，候选为空 → 不触发
+// 阈值停调（余额型走余额检测）。与 openai 的快照驱动停调一致：仅当用量超阈值
+// 且窗口尚未重置时才停调。
 func cnProviderThresholdCandidates(account *Account, provider string) []*accountSchedulingThresholdCandidate {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
@@ -361,6 +364,7 @@ func cnProviderThresholdCandidates(account *Account, provider string) []*account
 	return []*accountSchedulingThresholdCandidate{
 		cnThresholdCandidate(account.Extra, provider, "5h"),
 		cnThresholdCandidate(account.Extra, provider, "weekly"),
+		cnThresholdCandidate(account.Extra, provider, "monthly"),
 	}
 }
 
@@ -373,6 +377,9 @@ func cnThresholdCandidate(extra map[string]any, provider, window string) *accoun
 	case "weekly":
 		usedKey = cnExtraKey(provider, cnExtraSuffixWeeklyUsed)
 		resetKey = cnExtraKey(provider, cnExtraSuffixWeeklyReset)
+	case "monthly":
+		usedKey = cnExtraKey(provider, cnExtraSuffixMonthlyUsed)
+		resetKey = cnExtraKey(provider, cnExtraSuffixMonthlyReset)
 	default:
 		return nil
 	}

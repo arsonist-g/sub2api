@@ -235,6 +235,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformKimi,
 			PlatformZhipu,
 			PlatformDeepseek,
+			PlatformOpenCode,
 		},
 		false,
 	)

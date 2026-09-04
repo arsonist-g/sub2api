@@ -175,6 +175,9 @@ var providerAdapters = map[string]providerAdapter{
 	MonitorProviderKimi:     providerKimiChatAdapter,
 	MonitorProviderZhipu:    providerZhipuChatAdapter,
 	MonitorProviderDeepseek: providerDeepseekChatAdapter,
+	// OpenCode Zen/Go 网关同为 OpenAI 兼容 Chat Completions（/zen/go/v1 前缀
+	// 由监控 endpoint 配置提供，adapter 仅拼 /v1/chat/completions 相对路径）。
+	MonitorProviderOpenCode: providerOpenCodeChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -225,6 +228,9 @@ var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerOpenCodeChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{
@@ -458,6 +464,8 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderKimi:     {"model": true, "messages": true, "stream": true},
 	MonitorProviderZhipu:    {"model": true, "messages": true, "stream": true},
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
+	// OpenCode 同为 OpenAI Chat Completions 同构。
+	MonitorProviderOpenCode: {"model": true, "messages": true, "stream": true},
 }
 
 func checkAPIMode(opts *CheckOptions) string {
@@ -479,7 +487,8 @@ func bodyMergeDenyKey(provider, apiMode string) string {
 func isOpenAICompatibleChatProvider(provider string) bool {
 	switch provider {
 	case MonitorProviderOpenAI, MonitorProviderGrok,
-		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek:
+		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
+		MonitorProviderOpenCode:
 		return true
 	default:
 		return false

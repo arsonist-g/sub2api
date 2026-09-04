@@ -1329,6 +1329,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	// OpenCode Zen 网关的 reasoning.effort 合法档位逐模型不同，出站前统一钳制
+	// （无表模型删字段），避免把不合法档位发给上游触发确定性 400。
+	body = clampOpenCodeResponsesReasoningEffort(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

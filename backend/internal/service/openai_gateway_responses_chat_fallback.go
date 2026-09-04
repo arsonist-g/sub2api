@@ -79,6 +79,8 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions fallback request: %w", err)
 	}
+	// OpenCode Zen 网关的 reasoning_effort 合法档位逐模型不同，出站前统一钳制。
+	chatBody = clampOpenCodeChatReasoningEffort(account, chatBody)
 	chatBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, chatBody)
 	if err != nil {
 		var blocked *OpenAIFastBlockedError

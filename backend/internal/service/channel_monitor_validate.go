@@ -22,6 +22,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
+	MonitorProviderOpenCode:    {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -214,6 +215,8 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
 //     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
 //   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - opencode coding：GetCodingPlanProvider 须识别为 opencode（自定义域名
+//     无法路由用量端点）；payg 无任何用量/余额 API，不支持
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
@@ -230,6 +233,14 @@ func monitorAccountQuotaCapability(account *Account) error {
 			return ErrChannelMonitorAccountNotSupportable
 		}
 		return nil
+	case PlatformOpenCode:
+		if account.IsCodingPlan() {
+			if account.GetCodingPlanProvider() != PlatformOpenCode {
+				return ErrChannelMonitorAccountNotSupportable
+			}
+			return nil
+		}
+		return ErrChannelMonitorAccountNotSupportable
 	case PlatformAnthropic:
 		if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
 			return nil

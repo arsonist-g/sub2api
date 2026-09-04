@@ -1,6 +1,6 @@
 package service
 
-// OpenCode Go 订阅的官方模型清单（2026-09 官方文档盘点，opencode.ai/docs/go）。
+// OpenCode Go 订阅的官方模型清单（2026-09-04 官方文档盘点，opencode.ai/docs/go）。
 // 上游按协议分三组：responses（@ai-sdk/openai）、chat/completions
 // （@ai-sdk/openai-compatible）、messages（@ai-sdk/anthropic）；网关侧三组
 // 均可经对应协议端点访问，此处仅作分组模型白名单候选与 UI 展示，不参与路由。
@@ -9,26 +9,33 @@ package service
 //nolint:gochecknoglobals // 静态清单，初始化后不变。
 var openCodeDefaultModelIDs = []string{
 	// responses 组
-	"grok-4.5",
+	"grok-4.6",
 	"gpt-5.6-luna",
+	"muse-spark-1.3-contributor",
 	"muse-spark-1.2-contributor",
 	// chat/completions 组
+	"glm-5.3-flash",
 	"glm-5.3",
 	"glm-5.2",
 	"glm-5.1",
 	"kimi-k3",
 	"kimi-k2.7-code",
 	"kimi-k2.6",
+	"longcat-2.0",
 	"deepseek-v4-pro",
 	"deepseek-v4-flash",
+	"deepseek-v4-flash-vision-exp",
 	"mimo-v2.5",
 	"mimo-v2.5-pro",
+	"hy4-preview",
 	"hy3",
+	"omen-alpha",
 	// messages 组
 	"minimax-m3",
 	"minimax-m2.7",
 	"minimax-m2.5",
 	"qwen3.8-max",
+	"qwen3.8-flash",
 	"qwen3.7-max",
 	"qwen3.7-plus",
 	"qwen3.6-plus",

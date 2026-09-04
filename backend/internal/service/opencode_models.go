@@ -29,7 +29,6 @@ var openCodeDefaultModelIDs = []string{
 	"mimo-v2.5-pro",
 	"hy4-preview",
 	"hy3",
-	"omen-alpha",
 	// messages 组
 	"minimax-m3",
 	"minimax-m2.7",

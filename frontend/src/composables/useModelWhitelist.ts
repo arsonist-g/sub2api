@@ -211,7 +211,6 @@ const opencodeModels = [
   'mimo-v2.5-pro',
   'hy4-preview',
   'hy3',
-  'omen-alpha',
   'minimax-m3',
   'minimax-m2.7',
   'minimax-m2.5',

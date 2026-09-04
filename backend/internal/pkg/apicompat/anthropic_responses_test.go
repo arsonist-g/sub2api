@@ -197,6 +197,54 @@ func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
 	assert.Equal(t, "function_call", items[3].Type)
 }
 
+// reasoning 条目的 summary 是严格 Responses 校验方（OpenCode 的
+// @ai-sdk/openai）的必填字段：thinking 明文映射为 summary_text，空文本时
+// 也必须显式下发空数组，缺字段上游直接 400 "missing required field summary"。
+func TestAnthropicToResponses_ReasoningSummaryAlwaysEmitted(t *testing.T) {
+	build := func(thinking string) []ResponsesInputItem {
+		req := &AnthropicRequest{
+			Model:     "muse-spark-1.3-contributor",
+			MaxTokens: 1024,
+			Messages: []AnthropicMessage{
+				{Role: "user", Content: json.RawMessage(`"Hello"`)},
+				{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"` + thinking + `","signature":"enc-rs-1"},{"type":"text","text":"Hi!"}]`)},
+			},
+		}
+		resp, err := AnthropicToResponses(req)
+		require.NoError(t, err)
+		var items []ResponsesInputItem
+		require.NoError(t, json.Unmarshal(resp.Input, &items))
+		return items
+	}
+
+	// thinking 明文 → summary_text 条目。
+	items := build("deep thought")
+	require.Equal(t, "reasoning", items[1].Type)
+	assert.JSONEq(t, `[{"type":"summary_text","text":"deep thought"}]`, string(items[1].Summary))
+
+	// 空文本也必须输出显式空数组，不得省略字段。
+	items = build("")
+	require.Equal(t, "reasoning", items[1].Type)
+	assert.JSONEq(t, `[]`, string(items[1].Summary))
+
+	// 无 thinking 块的消息不产生 reasoning 条目（回归）。
+	req := &AnthropicRequest{
+		Model:     "muse-spark-1.3-contributor",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"Hi!"}]`)},
+		},
+	}
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	var plain []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &plain))
+	require.Len(t, plain, 2)
+	assert.NotEqual(t, "reasoning", plain[1].Type)
+	assert.Nil(t, plain[1].Summary)
+}
+
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",

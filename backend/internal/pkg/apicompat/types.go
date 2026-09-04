@@ -269,6 +269,10 @@ type ResponsesInputItem struct {
 
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
+	// Summary is required on reasoning items by strict Responses validators
+	// (OpenCode's @ai-sdk/openai rejects the request otherwise); emit at least
+	// an empty array. nil omits the field entirely.
+	Summary json.RawMessage `json:"summary,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`

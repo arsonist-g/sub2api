@@ -286,3 +286,45 @@ func TestOpenCodeExclusiveModelIDsCoverOfficialCatalog(t *testing.T) {
 			"official catalog model missing from exclusive list: %s", id)
 	}
 }
+
+// TestSanitizeOpenCodeResponsesRequest 剥除桥接注入、OpenCode 严格校验不接受
+// 的字段（include / text.verbosity / reasoning.summary），非 opencode 账号不动。
+func TestSanitizeOpenCodeResponsesRequest(t *testing.T) {
+	t.Parallel()
+	account := opencodeAccount(AccountModeCoding)
+	other := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	body := []byte(`{"model":"muse-spark-1.3-contributor","stream":true,` +
+		`"include":["reasoning.encrypted_content"],"text":{"verbosity":"medium"},` +
+		`"reasoning":{"effort":"medium","summary":"auto"},"store":false}`)
+	got := sanitizeOpenCodeResponsesRequest(account, body)
+	require.JSONEq(t, `{"model":"muse-spark-1.3-contributor","stream":true,`+
+		`"reasoning":{"effort":"medium"},"store":false}`, string(got))
+
+	// 非 opencode 账号原样返回。
+	unchanged := sanitizeOpenCodeResponsesRequest(other, body)
+	require.JSONEq(t, string(body), string(unchanged))
+
+	// 不带这些字段的 body 不被改写。
+	minimal := []byte(`{"model":"qwen3.8-max","input":[]}`)
+	require.JSONEq(t, string(minimal), string(sanitizeOpenCodeResponsesRequest(account, minimal)))
+}
+
+// TestOpenCodeResponsesOutboundPipeline 剥除与钳制的组合语义：
+// 无档位模型 reasoning 整删（不留空对象），表内模型仅保留合法档位。
+func TestOpenCodeResponsesOutboundPipeline(t *testing.T) {
+	t.Parallel()
+	account := opencodeAccount(AccountModeCoding)
+
+	// muse-spark 不在档位表：summary 先剥、effort 后钳 → 整个 reasoning 删除。
+	body := []byte(`{"model":"muse-spark-1.3-contributor",` +
+		`"include":["reasoning.encrypted_content"],"text":{"verbosity":"medium"},` +
+		`"reasoning":{"effort":"medium","summary":"auto"}}`)
+	got := clampOpenCodeResponsesReasoningEffort(account, sanitizeOpenCodeResponsesRequest(account, body))
+	require.JSONEq(t, `{"model":"muse-spark-1.3-contributor"}`, string(got))
+
+	// glm-5.2 在表（high|max）：medium 钳到 high，summary 剥除。
+	body = []byte(`{"model":"glm-5.2","reasoning":{"effort":"medium","summary":"auto"},"text":{"verbosity":"medium"}}`)
+	got = clampOpenCodeResponsesReasoningEffort(account, sanitizeOpenCodeResponsesRequest(account, body))
+	require.JSONEq(t, `{"model":"glm-5.2","reasoning":{"effort":"high"}}`, string(got))
+}

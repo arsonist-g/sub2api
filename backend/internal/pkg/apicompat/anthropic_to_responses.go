@@ -295,6 +295,12 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 		items = append(items, ResponsesInputItem{
 			Type:             "reasoning",
 			EncryptedContent: sig,
+			// reasoning 条目的 summary 为 Responses 严格校验方的必填字段
+			// （OpenCode 的 @ai-sdk/openai 缺字段直接 400 "missing required
+			// field summary"）；thinking 明文回放为 summary_text，空文本时
+			// 也必须显式下发空数组。对齐 cc-switch 的
+			// responses_reasoning_item_from_anthropic_block 行为。
+			Summary: responsesReasoningSummary(b.Thinking),
 		})
 	}
 
@@ -328,6 +334,24 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 	}
 
 	return items, nil
+}
+
+// responsesReasoningSummary builds the required summary array for a
+// reasoning input item from an Anthropic thinking block's visible text.
+func responsesReasoningSummary(thinking string) json.RawMessage {
+	trimmed := strings.TrimSpace(thinking)
+	if trimmed == "" {
+		return json.RawMessage("[]")
+	}
+	parts := []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}{{Type: "summary_text", Text: trimmed}}
+	encoded, err := json.Marshal(parts)
+	if err != nil {
+		return json.RawMessage("[]")
+	}
+	return encoded
 }
 
 // toResponsesCallID preserves Anthropic tool IDs as Responses call_id values.

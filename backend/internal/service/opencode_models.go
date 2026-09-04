@@ -1,5 +1,9 @@
 package service
 
+import (
+	"strings"
+)
+
 // OpenCode Go 订阅的官方模型清单（2026-09-04 官方文档盘点，opencode.ai/docs/go）。
 // 上游按协议分三组：responses（@ai-sdk/openai）、chat/completions
 // （@ai-sdk/openai-compatible）、messages（@ai-sdk/anthropic）；网关侧三组
@@ -45,4 +49,42 @@ func OpenCodeDefaultModelIDs() []string {
 	out := make([]string, len(openCodeDefaultModelIDs))
 	copy(out, openCodeDefaultModelIDs)
 	return out
+}
+
+// OpenCode 的模型按官方文档分属三个协议端点组：responses（/zen/go/v1/responses）、
+// chat/completions（/zen/go/v1/chat/completions）、messages（/zen/go/v1/messages，
+// Anthropic 协议）。每个模型只在其所属端点可用，发错端点会被上游 500 拒绝，
+// 账号连接测试须按模型所属组选择端点。
+//
+//nolint:gochecknoglobals // 静态查表，初始化后不变。
+var (
+	openCodeResponsesModels = map[string]struct{}{
+		"grok-4.6":                   {},
+		"gpt-5.6-luna":               {},
+		"muse-spark-1.3-contributor": {},
+		"muse-spark-1.2-contributor": {},
+	}
+	openCodeAnthropicModels = map[string]struct{}{
+		"minimax-m3":    {},
+		"minimax-m2.7":  {},
+		"minimax-m2.5":  {},
+		"qwen3.8-max":   {},
+		"qwen3.8-flash": {},
+		"qwen3.7-max":   {},
+		"qwen3.7-plus":  {},
+		"qwen3.6-plus":  {},
+	}
+)
+
+// OpenCodeModelAPIProtocol 返回模型所属的 OpenCode 协议端点组（api_protocol 值）。
+// 未知模型回退 chat_completions（官方目录的主体组）。
+func OpenCodeModelAPIProtocol(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if _, ok := openCodeResponsesModels[normalized]; ok {
+		return APIProtocolResponses
+	}
+	if _, ok := openCodeAnthropicModels[normalized]; ok {
+		return APIProtocolAnthropic
+	}
+	return APIProtocolChatCompletions
 }

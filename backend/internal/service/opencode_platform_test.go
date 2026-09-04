@@ -149,6 +149,35 @@ func TestOpenCodeThresholdCandidates(t *testing.T) {
 	require.Equal(t, "5h", decision.Window)
 }
 
+// TestOpenCodeModelAPIProtocol 模型→协议端点组映射（官方文档分组）。
+func TestOpenCodeModelAPIProtocol(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		model string
+		want  string
+	}{
+		{"muse-spark-1.3-contributor", APIProtocolResponses},
+		{"muse-spark-1.2-contributor", APIProtocolResponses},
+		{"gpt-5.6-luna", APIProtocolResponses},
+		{"grok-4.6", APIProtocolResponses},
+		{"minimax-m3", APIProtocolAnthropic},
+		{"qwen3.8-flash", APIProtocolAnthropic},
+		{"qwen3.6-plus", APIProtocolAnthropic},
+		{"deepseek-v4-flash", APIProtocolChatCompletions},
+		{"glm-5.3-flash", APIProtocolChatCompletions},
+		{"GPT-5.6-LUNA", APIProtocolResponses}, // 大小写不敏感
+		{" unknown-model ", APIProtocolChatCompletions},
+		{"", APIProtocolChatCompletions},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.model, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, OpenCodeModelAPIProtocol(tc.model))
+		})
+	}
+}
+
 // TestClampOpenCodeEffortLevel 钳制规则：钳到不小于请求值的最近合法档，
 // 请求超出最高档取最高档，无表 / 未知值返回空串。
 func TestClampOpenCodeEffortLevel(t *testing.T) {

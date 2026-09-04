@@ -297,6 +297,23 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	if account.IsCNProvider() {
+		// OpenCode 的每个模型只在官方文档标注的协议端点组上可用（responses /
+		// chat_completions / messages），指定模型测试时按其所属组路由端点，
+		// 否则把 responses 组模型发到 /chat/completions 会被上游 500 拒绝。
+		// 未指定模型则按账号协议走默认流程（默认测试模型均为 chat 组）。
+		if account.Platform == PlatformOpenCode && strings.TrimSpace(modelID) != "" {
+			mappedModel := account.GetMappedModel(strings.TrimSpace(modelID))
+			switch OpenCodeModelAPIProtocol(mappedModel) {
+			case APIProtocolResponses:
+				authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+				if authToken == "" {
+					return s.sendErrorAndEnd(c, "No API key available")
+				}
+				return s.testCNProviderAdaptiveResponsesConnection(c, account, mappedModel, authToken)
+			case APIProtocolAnthropic:
+				return s.testCNProviderAnthropicConnection(c, account, mappedModel)
+			}
+		}
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)

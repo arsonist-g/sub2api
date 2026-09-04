@@ -260,3 +260,29 @@ func TestClampOpenCodeChatReasoningEffort(t *testing.T) {
 		[]byte(`{"model":"deepseek-v4-pro","reasoning_effort":"medium"}`))
 	require.Equal(t, "medium", gjson.GetBytes(unchanged, "reasoning_effort").String())
 }
+
+// TestOpenCodeExclusiveModelIDsCoverOfficialCatalog 锁定独占名单与官方清单的
+// 自洽：名单 ⊆ 官方清单；被其他平台前缀认领的同名模型不得进名单（条目永不
+// 生效）；官方清单中未被认领的模型必须全部进名单——否则官方目录更新后新增
+// 的独占模型在 composite 分组会退回入口 400。
+func TestOpenCodeExclusiveModelIDsCoverOfficialCatalog(t *testing.T) {
+	t.Parallel()
+
+	official := make(map[string]struct{}, len(openCodeDefaultModelIDs))
+	for _, id := range OpenCodeDefaultModelIDs() {
+		official[id] = struct{}{}
+	}
+	for id := range openCodeExclusiveModelIDs {
+		require.Contains(t, official, id, "exclusive model not in official catalog: %s", id)
+	}
+	for id := range official {
+		platform, detected := DetectModelPlatform(id)
+		if detected && platform != PlatformOpenCode {
+			require.NotContains(t, openCodeExclusiveModelIDs, id,
+				"same-name model claimed by %s must stay out of the exclusive list: %s", platform, id)
+			continue
+		}
+		require.Contains(t, openCodeExclusiveModelIDs, id,
+			"official catalog model missing from exclusive list: %s", id)
+	}
+}

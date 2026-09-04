@@ -38,7 +38,7 @@ func TestAllowOpenAICompatibleMessagesDispatch_CompositeResolvedTargets(t *testi
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite, AllowMessagesDispatch: allow}}
-		ensureCompositeTargetPlatform(c, apiKey, model)
+		ensureCompositeTargetPlatform(c, nil, apiKey, model)
 		return c, apiKey
 	}
 
@@ -70,7 +70,7 @@ func TestResolveOpenAIMessagesDispatchMappedModel_CompositeCNTargetsSkipGroupMap
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
-		ensureCompositeTargetPlatform(c, apiKey, model)
+		ensureCompositeTargetPlatform(c, nil, apiKey, model)
 
 		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(c, apiKey, "claude-sonnet-4-5-20250929"), "model=%s", model)
 	}

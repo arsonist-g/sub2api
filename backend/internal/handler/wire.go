@@ -119,6 +119,7 @@ func ProvideGatewayHandler(
 
 func ProvideOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
+	coreGatewayService *service.GatewayService,
 	pluginManager *service.PluginManager,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -138,6 +139,9 @@ func ProvideOpenAIGatewayHandler(
 	gatewayService.SetIdentityService(identityService)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
+	// composite 分组入口校验须与调度层同链解析（显式路由表 → 账号模型目录 →
+	// detector），经核心网关服务访问 composite 路由表。
+	h.compositeEntryResolver = coreGatewayService
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
 	return h

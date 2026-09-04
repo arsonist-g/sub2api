@@ -76,6 +76,42 @@ var (
 	}
 )
 
+// openCodeExclusiveModelIDs 是 OpenCode Go 目录中不与任何已支持平台模型名冲突的
+// 独占模型（qwen3.* / minimax-* / longcat-* / mimo-* / hy* / muse-spark-*）。
+// 同名冲突模型（glm-*/kimi-k*/deepseek-v*/grok-4.6/gpt-5.6-luna）刻意不在此列：
+// composite 分组下它们仍须经显式路由表或账号模型映射仲裁，防止被错误导向
+// zhipu/kimi/deepseek/grok/openai 原生平台。官方清单同步时，新增模型若不与
+// 已支持平台同名，应同步加入此名单。
+//
+//nolint:gochecknoglobals // 静态查表，初始化后不变。
+var openCodeExclusiveModelIDs = map[string]struct{}{
+	// responses 组
+	"muse-spark-1.3-contributor": {},
+	"muse-spark-1.2-contributor": {},
+	// chat/completions 组
+	"longcat-2.0":   {},
+	"mimo-v2.5":     {},
+	"mimo-v2.5-pro": {},
+	"hy4-preview":   {},
+	"hy3":           {},
+	// messages 组
+	"minimax-m3":    {},
+	"minimax-m2.7":  {},
+	"minimax-m2.5":  {},
+	"qwen3.8-max":   {},
+	"qwen3.8-flash": {},
+	"qwen3.7-max":   {},
+	"qwen3.7-plus":  {},
+	"qwen3.6-plus":  {},
+}
+
+// isOpenCodeExclusiveModelID 报告 model（须已小写、去空白）是否为 OpenCode Go
+// 的独占模型名。供 composite 平台检测的兜底分支使用。
+func isOpenCodeExclusiveModelID(model string) bool {
+	_, ok := openCodeExclusiveModelIDs[model]
+	return ok
+}
+
 // OpenCodeModelAPIProtocol 返回模型所属的 OpenCode 协议端点组（api_protocol 值）。
 // 未知模型回退 chat_completions（官方目录的主体组）。
 func OpenCodeModelAPIProtocol(model string) string {

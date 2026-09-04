@@ -176,6 +176,22 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "moonshot prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		// OpenCode Go 独占模型 → opencode（免配置可用）。
+		{name: "opencode exclusive qwen", model: "qwen3.8-max", platform: PlatformOpenCode, ok: true},
+		{name: "opencode exclusive minimax", model: "minimax-m3", platform: PlatformOpenCode, ok: true},
+		{name: "opencode exclusive longcat", model: "longcat-2.0", platform: PlatformOpenCode, ok: true},
+		{name: "opencode exclusive mimo", model: "mimo-v2.5-pro", platform: PlatformOpenCode, ok: true},
+		{name: "opencode exclusive hy", model: "hy4-preview", platform: PlatformOpenCode, ok: true},
+		{name: "opencode exclusive muse-spark", model: "muse-spark-1.3-contributor", platform: PlatformOpenCode, ok: true},
+		// 与国产原生平台同名的 OpenCode 模型保持各自原生平台，须经显式路由表仲裁。
+		{name: "opencode same-name glm stays zhipu", model: "glm-5.3", platform: PlatformZhipu, ok: true},
+		{name: "opencode same-name kimi stays kimi", model: "kimi-k3", platform: PlatformKimi, ok: true},
+		{name: "opencode same-name deepseek stays deepseek", model: "deepseek-v4-flash", platform: PlatformDeepseek, ok: true},
+		{name: "opencode same-name grok stays grok", model: "grok-4.6", platform: PlatformGrok, ok: true},
+		{name: "opencode same-name gpt stays openai", model: "gpt-5.6-luna", platform: PlatformOpenAI, ok: true},
+		// 独占模型仅精确匹配：前缀变体不得误判为 opencode。
+		{name: "opencode exclusive exact only qwen", model: "qwen3.9-max", ok: false},
+		{name: "opencode exclusive exact only minimax", model: "minimax-m4", ok: false},
 		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}

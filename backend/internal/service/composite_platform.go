@@ -87,9 +87,12 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 // DetectModelPlatform maps common public model IDs to the concrete provider
 // platform used by sub2api. It intentionally returns false for ambiguous model
 // names so composite groups fail closed instead of guessing.
-// OpenCode 的模型名（glm-*/kimi-*/deepseek-* 等）与国产原生平台同名，刻意不做
-// 自动识别：composite 分组须经显式路由表（composite_model_routes）指向 opencode，
-// 否则同名模型会被错误路由到 zhipu/kimi/deepseek 平台。
+// OpenCode 与国产原生平台同名的模型（glm-*/kimi-*/deepseek-*/grok-4.6/
+// gpt-5.6-luna）刻意不做自动识别：composite 分组须经显式路由表
+// （composite_model_routes）或账号模型映射指向 opencode，否则同名模型会被
+// 错误路由到 zhipu/kimi/deepseek/grok/openai 平台。不与任何已支持平台冲突的
+// OpenCode Go 独占模型（qwen3.*/minimax-*/longcat-*/mimo-*/hy*/muse-spark-*）
+// 按精确名单识别为 opencode，使 composite 分组免配置即可服务这些模型。
 func DetectModelPlatform(model string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if normalized == "" {
@@ -151,6 +154,8 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformZhipu, true
 	case strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepseek, true
+	case isOpenCodeExclusiveModelID(normalized):
+		return PlatformOpenCode, true
 	default:
 		return "", false
 	}
@@ -193,6 +198,43 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 		return decision, false, err
 	}
 	return decision, decision.Matched, nil
+}
+
+// CompositeRouteEntryResolver resolves a composite-group request's target
+// platform at gateway handler entry. Implemented by *GatewayService.
+type CompositeRouteEntryResolver interface {
+	ResolveCompositeRouteDecisionForEntry(ctx context.Context, group *Group, requestedModel, endpoint string) (CompositeRouteDecision, bool)
+}
+
+var _ CompositeRouteEntryResolver = (*GatewayService)(nil)
+
+// ResolveCompositeRouteDecisionForEntry resolves the target platform for a
+// composite-group request at gateway handler entry, keeping the entry gate
+// consistent with the scheduling chain (explicit route table → account model
+// ownership → built-in detector). When the route table or account catalog is
+// temporarily unavailable (or the receiver is nil), it degrades to the
+// detector so entry availability is never worse than detector-only checks.
+func (s *GatewayService) ResolveCompositeRouteDecisionForEntry(ctx context.Context, group *Group, requestedModel, endpoint string) (CompositeRouteDecision, bool) {
+	if group == nil || group.Platform != PlatformComposite {
+		return CompositeRouteDecision{}, false
+	}
+	if s != nil {
+		if decision, ok, err := s.resolveCompositeRouteDecision(ctx, group, requestedModel, endpoint); err == nil && ok {
+			return decision, true
+		}
+	}
+	if platform, ok := DetectModelPlatform(requestedModel); ok {
+		return CompositeRouteDecision{
+			Matched:        true,
+			Source:         CompositeRouteSourceDetector,
+			GroupID:        group.ID,
+			PublicModel:    requestedModel,
+			TargetPlatform: platform,
+			UpstreamModel:  requestedModel,
+			Endpoint:       normalizeCompositeRouteEndpoint(endpoint),
+		}, true
+	}
+	return CompositeRouteDecision{}, false
 }
 
 func isConcreteRequestPlatform(platform string) bool {

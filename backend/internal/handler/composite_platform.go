@@ -10,23 +10,37 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func ensureCompositeTargetPlatform(c *gin.Context, apiKey *service.APIKey, model string) {
+// ensureCompositeTargetPlatform resolves the concrete target platform for a
+// composite-group request at handler entry. It uses the same decision chain
+// as scheduling (explicit route table → account model ownership → detector),
+// so models routed to opencode via composite_model_routes pass the entry gate
+// and same-name models (glm-* etc.) are no longer pre-bound to their native
+// platforms by the detector alone. resolver may be nil (tests): it then
+// degrades to the built-in detector.
+func ensureCompositeTargetPlatform(c *gin.Context, resolver service.CompositeRouteEntryResolver, apiKey *service.APIKey, model string) {
 	if c == nil || c.Request == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
 		return
 	}
-	if _, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+	ctx := c.Request.Context()
+	if _, ok := service.ResolvedTargetPlatformFromContext(ctx); ok {
+		return
+	}
+	if resolver != nil {
+		if decision, ok := resolver.ResolveCompositeRouteDecisionForEntry(ctx, apiKey.Group, model, service.CompositeRouteEndpointAny); ok {
+			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(ctx, decision))
+		}
 		return
 	}
 	if platform, ok := service.DetectModelPlatform(model); ok {
-		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
+		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(ctx, platform))
 	}
 }
 
-func compositeTargetPlatformAllowed(c *gin.Context, apiKey *service.APIKey, model string, allowed ...string) bool {
+func compositeTargetPlatformAllowed(c *gin.Context, resolver service.CompositeRouteEntryResolver, apiKey *service.APIKey, model string, allowed ...string) bool {
 	if c == nil || c.Request == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
 		return true
 	}
-	ensureCompositeTargetPlatform(c, apiKey, model)
+	ensureCompositeTargetPlatform(c, resolver, apiKey, model)
 	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 	if !ok {
 		return false
@@ -39,11 +53,11 @@ func compositeTargetPlatformAllowed(c *gin.Context, apiKey *service.APIKey, mode
 	return false
 }
 
-func compositeTargetPlatformResolved(c *gin.Context, apiKey *service.APIKey, model string) bool {
+func compositeTargetPlatformResolved(c *gin.Context, resolver service.CompositeRouteEntryResolver, apiKey *service.APIKey, model string) bool {
 	if c == nil || c.Request == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
 		return true
 	}
-	ensureCompositeTargetPlatform(c, apiKey, model)
+	ensureCompositeTargetPlatform(c, resolver, apiKey, model)
 	_, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 	return ok
 }

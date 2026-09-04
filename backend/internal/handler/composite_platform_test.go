@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
 
@@ -16,7 +17,7 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/v1/embeddings", nil)
 	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
 
-	require.True(t, compositeTargetPlatformAllowed(c, apiKey, "text-embedding-3-large", service.PlatformOpenAI))
+	require.True(t, compositeTargetPlatformAllowed(c, nil, apiKey, "text-embedding-3-large", service.PlatformOpenAI))
 	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 	require.True(t, ok)
 	require.Equal(t, service.PlatformOpenAI, platform)
@@ -41,7 +42,7 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 			c.Request = httptest.NewRequest("POST", path, nil)
 			apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
 
-			require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, provider.model), "path=%s model=%s", path, provider.model)
+			require.True(t, openAICompatibleTextTargetAllowed(c, nil, apiKey, provider.model), "path=%s model=%s", path, provider.model)
 			platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 			require.True(t, ok, "path=%s model=%s", path, provider.model)
 			require.Equal(t, provider.platform, platform, "path=%s model=%s", path, provider.model)
@@ -77,7 +78,7 @@ func TestCompositeTargetPlatformAllowedRejectsWrongOrUnknownModel(t *testing.T) 
 			c.Request = httptest.NewRequest("POST", "/v1/embeddings", nil)
 			apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
 
-			require.False(t, compositeTargetPlatformAllowed(c, apiKey, tc.model, service.PlatformOpenAI))
+			require.False(t, compositeTargetPlatformAllowed(c, nil, apiKey, tc.model, service.PlatformOpenAI))
 		})
 	}
 }
@@ -88,7 +89,7 @@ func TestCompositeTargetPlatformResolvedRejectsUnknownModel(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
 
-	require.False(t, compositeTargetPlatformResolved(c, apiKey, "llama-4-maverick"))
+	require.False(t, compositeTargetPlatformResolved(c, nil, apiKey, "llama-4-maverick"))
 	_, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 	require.False(t, ok)
 }
@@ -99,7 +100,7 @@ func TestCompositeTargetPlatformResolvedAllowsConcreteGroupWithoutResolution(t *
 	c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic}}
 
-	require.True(t, compositeTargetPlatformResolved(c, apiKey, "llama-4-maverick"))
+	require.True(t, compositeTargetPlatformResolved(c, nil, apiKey, "llama-4-maverick"))
 }
 
 func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
@@ -158,6 +159,77 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, body, got)
+}
+
+// fakeCompositeEntryResolver 模拟入口侧 composite 路由解析（显式路由表 /
+// 账号模型目录），锁定 handler 入口校验与调度决策链的一致性。
+type fakeCompositeEntryResolver struct {
+	decision service.CompositeRouteDecision
+	ok       bool
+}
+
+func (f fakeCompositeEntryResolver) ResolveCompositeRouteDecisionForEntry(
+	_ context.Context, _ *service.Group, _, _ string,
+) (service.CompositeRouteDecision, bool) {
+	return f.decision, f.ok
+}
+
+// composite 分组 + OpenAI 兼容端点 + OpenCode 目标：入口须放行（修复前
+// detector 不识别 opencode 独占模型名 + 白名单缺 opencode，请求在协议转换
+// 之前就被 400 拒绝）。
+func TestOpenAICompatibleTextTargetAllowsOpenCodeViaEntryResolver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+	resolver := fakeCompositeEntryResolver{ok: true, decision: service.CompositeRouteDecision{
+		Matched:        true,
+		Source:         service.CompositeRouteSourceDetector,
+		TargetPlatform: service.PlatformOpenCode,
+		UpstreamModel:  "qwen3.8-max",
+	}}
+
+	require.True(t, openAICompatibleTextTargetAllowed(c, resolver, apiKey, "qwen3.8-max"))
+	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, service.PlatformOpenCode, platform)
+	upstream, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, "qwen3.8-max", upstream)
+}
+
+// 显式路由决策（路由表/账号目录）优先于 detector：同名模型（detector 会判
+// zhipu 的 glm-5.3）被路由表指向 opencode 时，入口不得让 detector 抢先绑定
+// 原生平台导致路由表被短路。
+func TestCompositeEntryResolverOverridesDetectorForSameNameModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/openai/v1/responses", nil)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+	resolver := fakeCompositeEntryResolver{ok: true, decision: service.CompositeRouteDecision{
+		Matched:        true,
+		Source:         service.CompositeRouteSourceExplicit,
+		TargetPlatform: service.PlatformOpenCode,
+		UpstreamModel:  "glm-5.3",
+	}}
+
+	require.True(t, openAICompatibleTextTargetAllowed(c, resolver, apiKey, "glm-5.3"))
+	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, service.PlatformOpenCode, platform)
+}
+
+// resolver 在位但未命中任何决策（路由表/账号目录/detector 全空）：保持
+// fail-closed，不得因 resolver 缺席而放宽。
+func TestCompositeEntryResolverMissKeepsFailClosed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+
+	require.False(t, openAICompatibleTextTargetAllowed(c, fakeCompositeEntryResolver{}, apiKey, "llama-4-maverick"))
+	_, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.False(t, ok)
 }
 
 func TestClientRequestedModelUsesCompositePublicModel(t *testing.T) {

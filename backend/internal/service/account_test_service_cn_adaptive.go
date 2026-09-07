@@ -87,6 +87,9 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	}
 	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	// OpenCode 上游要求每请求携带 X-Opencode-Session；探测 payload 内容固定，
+	// 派生出的会话 ID 对同一账号稳定。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, nil, payloadBytes)
 	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
@@ -180,6 +183,9 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	applyOpenAICodexProbeHeaders(req.Header)
+	// OpenCode 上游要求每请求携带 X-Opencode-Session；探测 payload 内容固定，
+	// 派生出的会话 ID 对同一账号稳定。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, nil, payloadBytes)
 	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
@@ -270,6 +276,9 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 		req.Header.Set(key, value)
 	}
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	// OpenCode 上游要求每请求携带 X-Opencode-Session；探测 payload 内容固定，
+	// 派生出的会话 ID 对同一账号稳定。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, nil, payloadBytes)
 	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)

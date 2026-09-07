@@ -2016,6 +2016,10 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 
+	// OpenCode 上游要求每请求携带 X-Opencode-Session；探测 payload 内容固定，
+	// 派生出的会话 ID 对同一账号稳定。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, nil, payloadBytes)
+
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
 

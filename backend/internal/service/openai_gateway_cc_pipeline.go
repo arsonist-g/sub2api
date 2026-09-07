@@ -218,6 +218,9 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 		}
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 	}
+	// OpenCode 上游要求每请求携带稳定的 X-Opencode-Session（缺失会被拒），
+	// 在账号级覆写前注入，管理员显式配置仍可覆盖。
+	applyOpenCodeUpstreamSessionHeader(upstreamReq.Header, account, c, body)
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)

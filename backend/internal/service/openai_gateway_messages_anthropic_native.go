@@ -194,6 +194,10 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
+	// OpenCode 上游要求每请求携带稳定的 X-Opencode-Session（缺失会被拒），
+	// 在账号级覆写前注入，管理员显式配置仍可覆盖。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, c, body)
+
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
 

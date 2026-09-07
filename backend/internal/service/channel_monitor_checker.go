@@ -229,8 +229,25 @@ var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
+// openCodeMonitorProbeSessionID 渠道监控探测请求携带的固定 X-Opencode-Session。
+// OpenCode 上游要求对话请求必带该头（缺失可能被拒）；监控探测为一次性
+// 独立请求，不参与多轮会话，固定值即可满足稳定性要求。
+//
+//nolint:gochecknoglobals // 由固定种子确定性派生，初始化后不变。
+var openCodeMonitorProbeSessionID = deriveStableUUIDv4("sub2api:opencode-monitor-session:v1")
+
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
-var providerOpenCodeChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+var providerOpenCodeChatAdapter = providerAdapter{
+	buildPath: providerOpenAIChatAdapter.buildPath,
+	buildBody: providerOpenAIChatAdapter.buildBody,
+	textPath:  providerOpenAIChatAdapter.textPath,
+	buildHeaders: func(apiKey string) map[string]string {
+		return map[string]string{
+			"Authorization":             "Bearer " + apiKey,
+			openCodeNativeSessionHeader: openCodeMonitorProbeSessionID,
+		}
+	},
+}
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{

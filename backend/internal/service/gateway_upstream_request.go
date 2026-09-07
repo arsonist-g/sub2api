@@ -185,6 +185,10 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// OpenCode 上游要求每请求携带稳定的 X-Opencode-Session（缺失会被拒），
+	// 在账号级覆写前注入，管理员显式配置仍可覆盖。
+	applyOpenCodeUpstreamSessionHeader(req.Header, account, c, body)
+
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
 	account.ApplyHeaderOverrides(req.Header)

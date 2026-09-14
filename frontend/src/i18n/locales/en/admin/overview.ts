@@ -973,6 +973,7 @@ export default {
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
         opencode: 'OpenCode',
+        cline: 'Cline',
         composite: 'Composite',
       },
       deleteConfirm:

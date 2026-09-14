@@ -236,6 +236,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformZhipu,
 			PlatformDeepseek,
 			PlatformOpenCode,
+			PlatformCline,
 		},
 		false,
 	)

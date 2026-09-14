@@ -135,9 +135,9 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
 	switch provider {
-	case PlatformKimi, PlatformZhipu, PlatformOpenCode:
+	case PlatformKimi, PlatformZhipu, PlatformOpenCode, PlatformCline:
 	default:
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/opencode coding plan account")
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/opencode/cline coding plan account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -159,6 +159,10 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		// OpenCode Go 用量端点只认 Authorization: Bearer——与推理侧 /v1/messages
 		// 只认 x-api-key 正好相反，不能互换。
 		targetURL = opencodeUsageURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	case PlatformCline:
+		// Cline 订阅额度端点与推理共用同一个 API Key（Authorization: Bearer）。
+		targetURL = clineUsageURL(baseURL)
 		authHeader = "Bearer " + apiKey
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
@@ -260,6 +264,13 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			result.Error = "Unexpected usage response shape"
 			return result, nil
 		}
+	case PlatformCline:
+		tiers = parseClineUsageTiers(bodyBytes)
+		// 与 OpenCode 同理：端点未文档化，解析不出任何窗口时明确报错。
+		if len(tiers) == 0 {
+			result.Error = "Unexpected usage response shape"
+			return result, nil
+		}
 	}
 	result.Tiers = tiers
 	result.Success = true
@@ -338,6 +349,16 @@ func kimiQuotaURL(baseURL string) string {
 func opencodeUsageURL(baseURL string) string {
 	base := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
 	return base + "/v1/usage"
+}
+
+// clineUsageURL 解析 Cline 订阅用量端点。base_url 已包含 /api/v1 版本段
+// （DefaultClineBaseURL），端点直接拼在其后，不再补版本段。
+func clineUsageURL(baseURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		base = DefaultClineBaseURL
+	}
+	return base + "/users/me/plan/usage-limits"
 }
 
 func zhipuQuotaHost(baseURL string) string {
@@ -455,6 +476,40 @@ func parseOpenCodeUsageTiers(body []byte) []CNQuotaTier {
 
 // cnZhipuWindow 标识智谱 TOKENS_LIMIT 条目所属窗口。
 type cnZhipuWindow int
+
+// parseClineUsageTiers 解析 Cline 订阅额度响应 data.limits 为三档窗口。
+// 条目自带 type 字段（five_hour / weekly / monthly），按 type 直接归类；
+// 与 OpenCode 的对象嵌套形态不同，不能共用解析。
+func parseClineUsageTiers(body []byte) []CNQuotaTier {
+	windowByType := map[string]string{
+		"five_hour": "5h",
+		"weekly":    "weekly",
+		"monthly":   "monthly",
+	}
+	limits := gjson.GetBytes(body, "data.limits")
+	if !limits.IsArray() {
+		return nil
+	}
+	var tiers []CNQuotaTier
+	seen := make(map[string]bool, len(windowByType))
+	for _, item := range limits.Array() {
+		window, ok := windowByType[strings.TrimSpace(item.Get("type").String())]
+		if !ok || seen[window] {
+			continue
+		}
+		percent, ok := cnParseF64(item.Get("percentUsed").Value())
+		if !ok {
+			continue
+		}
+		seen[window] = true
+		tier := CNQuotaTier{Window: window, UsedPercent: percent}
+		if percent > 0 {
+			tier.ResetAt = cnNormalizeResetTime(item.Get("resetsAt").Value())
+		}
+		tiers = append(tiers, tier)
+	}
+	return tiers
+}
 
 const (
 	cnZhipuWindowUnknown cnZhipuWindow = iota

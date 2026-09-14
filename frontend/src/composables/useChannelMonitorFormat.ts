@@ -21,8 +21,9 @@ import {
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
-  PROVIDER_OPENCODE,
-  PROVIDERS,
+ PROVIDER_OPENCODE,
+  PROVIDER_CLINE,
+ PROVIDERS,
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
   STATUS_FAILED,
@@ -106,7 +107,7 @@ export function useChannelMonitorFormat() {
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
       // 配色与 utils/platformColors.ts 的平台色对齐：antigravity=purple /
-      // kimi=pink / zhipu=indigo / deepseek=teal / opencode=lime。
+      // kimi=pink / zhipu=indigo / deepseek=teal / opencode=lime / cline=rose。
       case PROVIDER_ANTIGRAVITY:
         return 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
       case PROVIDER_KIMI:
@@ -117,6 +118,8 @@ export function useChannelMonitorFormat() {
         return 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
       case PROVIDER_OPENCODE:
         return 'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300'
+      case PROVIDER_CLINE:
+        return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
       default:
         return NEUTRAL_BADGE
     }
@@ -181,6 +184,10 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-lime-500 bg-lime-50 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300 dark:border-lime-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-lime-300 hover:text-lime-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-lime-500/50'
+      case PROVIDER_CLINE:
+        return active
+          ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:text-rose-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-rose-500/50'
       default:
         return active
           ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'

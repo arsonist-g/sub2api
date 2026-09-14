@@ -467,7 +467,8 @@ export default {
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
-      opencode: 'OpenCode'
+      opencode: 'OpenCode',
+      cline: 'Cline'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {

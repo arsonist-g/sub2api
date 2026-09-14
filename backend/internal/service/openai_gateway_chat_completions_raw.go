@@ -496,6 +496,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		}
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}
+	// Cline 的非流式响应带一层 {"data":...,"success":true} 外壳，解包后才是
+	// OpenAI 形态（也才会被后续的 model 观察与 usage 提取看到）。
+	respBody = unwrapClineSuccessEnvelope(account, respBody)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)

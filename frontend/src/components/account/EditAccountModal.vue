@@ -250,6 +250,15 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
+        <!-- Cline：实时拉取可用模型并逐模型选择上游供应商偏好 -->
+        <ClineModelProviderPanel
+          v-if="account.platform === 'cline'"
+          v-model="editClineModelProviders"
+          :api-key="editApiKey"
+          :account-id="account.id"
+          :account-mode="editAccountMode"
+        />
+
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2974,6 +2983,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
+import ClineModelProviderPanel from '@/components/account/ClineModelProviderPanel.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
@@ -2987,6 +2997,7 @@ import {
   isHeaderOverrideCapable,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows,
+  cnChatCompletionsOnly,
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
@@ -2997,6 +3008,7 @@ import {
   type CnNativeApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
+import type { ClineModelProviders } from '@/api/admin/cline'
 import {
   formatDateTime,
   formatDateTimeLocalInput,
@@ -3094,13 +3106,14 @@ const isCNApiKeyAccount = computed(
     (props.account.platform === 'kimi' ||
       props.account.platform === 'zhipu' ||
       props.account.platform === 'deepseek' ||
-      props.account.platform === 'opencode')
+      props.account.platform === 'opencode' ||
+      props.account.platform === 'cline')
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode'>(() => {
+const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline'>(() => {
   const platform = props.account?.platform
-  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'opencode') {
+  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'opencode' || platform === 'cline') {
     return platform
   }
   return 'kimi'
@@ -3110,6 +3123,8 @@ const editAccountMode = ref<CnAccountMode>('payg')
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const editZhipuOrganization = ref('')
 const editZhipuProject = ref('')
+// Cline：逐模型的上游供应商偏好，编辑后写回 credentials.model_providers
+const editClineModelProviders = ref<ClineModelProviders>({})
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -3133,6 +3148,9 @@ const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'p
   }
 )
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
+  if (cnChatCompletionsOnly(props.account?.platform ?? '')) {
+    return [{ value: 'chat_completions', labelKey: 'chatCompletions' }]
+  }
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
     { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
@@ -3655,7 +3673,8 @@ const defaultBaseUrl = computed(() => {
     props.account?.platform === 'kimi' ||
     props.account?.platform === 'zhipu' ||
     props.account?.platform === 'deepseek' ||
-    props.account?.platform === 'opencode'
+    props.account?.platform === 'opencode' ||
+    props.account?.platform === 'cline'
   ) {
     return defaultCNBaseUrl(cnPresetPlatform.value, editAccountMode.value, editApiProtocol.value)
   }
@@ -4025,9 +4044,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       newAccount.platform === 'kimi' ||
       newAccount.platform === 'zhipu' ||
       newAccount.platform === 'deepseek' ||
-      newAccount.platform === 'opencode'
+      newAccount.platform === 'opencode' ||
+      newAccount.platform === 'cline'
     ) {
       editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
+      // Cline：回填逐模型供应商偏好，供管理员在编辑弹窗内逐项修改
+      if (newAccount.platform === 'cline') {
+        editClineModelProviders.value =
+          (credentials.model_providers as ClineModelProviders | undefined) ?? {}
+      }
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
         storedProtocol === 'adaptive' ||
@@ -4043,7 +4068,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         newAccount.platform === 'kimi' ||
         newAccount.platform === 'zhipu' ||
         newAccount.platform === 'deepseek' ||
-        newAccount.platform === 'opencode'
+        newAccount.platform === 'opencode' ||
+        newAccount.platform === 'cline'
           ? newAccount.platform
           : 'kimi'
       const adaptiveDefaults = defaultCNAdaptiveBaseUrls(adaptivePlatform, editAccountMode.value)
@@ -4093,7 +4119,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : newAccount.platform === 'kimi' ||
                 newAccount.platform === 'zhipu' ||
                 newAccount.platform === 'deepseek' ||
-                newAccount.platform === 'opencode'
+                newAccount.platform === 'opencode' ||
+                newAccount.platform === 'cline'
               ? defaultCNBaseUrl(cnPresetPlatform.value, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
@@ -4806,6 +4833,14 @@ const handleSubmit = async () => {
           } else {
             delete newCredentials.zhipu_organization
             delete newCredentials.zhipu_project
+          }
+        }
+        // Cline：逐模型上游供应商偏好（空对象不落盘，保持凭据干净）
+        if (props.account.platform === 'cline') {
+          if (Object.keys(editClineModelProviders.value).length > 0) {
+            newCredentials.model_providers = editClineModelProviders.value
+          } else {
+            delete newCredentials.model_providers
           }
         }
       }

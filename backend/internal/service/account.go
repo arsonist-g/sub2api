@@ -297,7 +297,7 @@ func (a *Account) IsCNProvider() bool {
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
 		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek ||
-		a.Platform == PlatformOpenCode)
+		a.Platform == PlatformOpenCode || a.Platform == PlatformCline)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1369,6 +1369,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 			return DefaultOpenCodeCodingBaseURL
 		}
 		return DefaultOpenCodePayGBaseURL
+	case PlatformCline:
+		return DefaultClineBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1398,6 +1400,11 @@ func (a *Account) IsCodingPlan() bool {
 // Responses 端点，适配 Codex）；zhipu 无此端点。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
+		return APIProtocolChatCompletions
+	}
+	// Cline 上游只有 Chat Completions（无 Anthropic / Responses 原生端点），
+	// 忽略存储的协议值；Anthropic/Responses 入站请求由网关侧转换后转发。
+	if a.Platform == PlatformCline {
 		return APIProtocolChatCompletions
 	}
 	switch strings.TrimSpace(a.GetCredential("api_protocol")) {
@@ -1510,6 +1517,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 				return DefaultOpenCodeCodingBaseURL
 			}
 			return DefaultOpenCodePayGBaseURL
+		case PlatformCline:
+			return DefaultClineBaseURL
 		}
 	}
 	return ""
@@ -1613,6 +1622,8 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformZhipu
 	case strings.Contains(baseURL, "opencode.ai/zen/go"):
 		return PlatformOpenCode
+	case strings.Contains(baseURL, "api.cline.bot"):
+		return PlatformCline
 	default:
 		return ""
 	}

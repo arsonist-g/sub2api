@@ -32,6 +32,10 @@ const (
 	// /zen/go/v1/messages、Chat Completions /zen/go/v1/chat/completions、
 	// Responses /zen/go/v1/responses，订阅与按量共用同一套协议形态）。
 	PlatformOpenCode = "opencode"
+	// Cline 订阅网关（api.cline.bot）。只支持 API Key 接入；上游仅 Chat Completions
+	// 一种协议，Anthropic Messages / Responses 入站请求在网关侧转换后转发。
+	// 注意：与 zhipu_spoofing 中表示「Cline 客户端」的同名标识不是一回事。
+	PlatformCline = "cline"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。

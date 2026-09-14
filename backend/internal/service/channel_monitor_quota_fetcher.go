@@ -228,6 +228,13 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchUsage(ctx, account, now)
+	case domain.PlatformCline:
+		// Cline 订阅（coding）复用三窗口用量端点；按量（payg）走 Credits 余额
+		// （余额服务内部先解析 userId 再查余额）。
+		if account.IsCodingPlan() {
+			return f.fetchCNQuota(ctx, account, now)
+		}
+		return f.fetchCNBalance(ctx, account, now)
 	default:
 		return f.fetchUsage(ctx, account, now)
 	}

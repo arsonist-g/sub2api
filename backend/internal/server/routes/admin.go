@@ -63,6 +63,7 @@ func RegisterAdminRoutes(
 
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
+		registerClineRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
@@ -493,6 +494,17 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 // registerCNProviderRoutes 注册国产供应商（kimi/zhipu/deepseek）的额度与余额查询端点。
+// registerClineRoutes 注册 Cline 订阅网关的管理端查询端点。
+func registerClineRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cline := admin.Group("/cline")
+	{
+		// 实时模型目录（订阅分组 + 按量目录）。
+		cline.POST("/models", h.Admin.Cline.LoadModels)
+		// 逐模型的可用上游供应商探测（会产生真实推理请求，仅管理员显式触发）。
+		cline.POST("/provider-probe", h.Admin.Cline.ProbeProviders)
+	}
+}
+
 func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	cn := admin.Group("/cn-providers")
 	{

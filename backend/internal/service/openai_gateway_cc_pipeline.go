@@ -180,6 +180,10 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	userAgent string,
 	grokCacheIdentity string,
 ) (*http.Response, error) {
+	// Cline：按模型把上游供应商偏好写入请求体。三条 CC 路径（raw 直转、
+	// messages 回退、responses 回退）共用本函数，出站改写收敛在这一处。
+	// 未配置、mode=auto 或客户端已自行指定同类字段时原样返回。
+	body = applyClineProviderPreference(account, body)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
@@ -329,6 +333,7 @@ func logCCStreamMissingDoneSentinel(logPrefix, requestID string) {
 // 端点格式回写错误；成功时顺带提取 usage。
 func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 	c *gin.Context,
+	account *Account,
 	resp *http.Response,
 	writeError compatErrorWriter,
 ) (*apicompat.ChatCompletionsResponse, OpenAIUsage, error) {
@@ -340,6 +345,9 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 		return nil, OpenAIUsage{}, fmt.Errorf("read upstream body: %w", err)
 	}
 
+	// Cline 的非流式响应带一层 {"data":...,"success":true} 外壳，解包后再解析，
+	// 否则 choices 与 usage 全部落空（回程转换会退化成空输出）。
+	respBody = unwrapClineSuccessEnvelope(account, respBody)
 	var ccResp apicompat.ChatCompletionsResponse
 	if err := json.Unmarshal(respBody, &ccResp); err != nil {
 		writeError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")

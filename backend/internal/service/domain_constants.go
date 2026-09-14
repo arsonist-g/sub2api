@@ -50,6 +50,8 @@ const (
 	PlatformComposite = domain.PlatformComposite
 	// OpenCode Zen/Go 网关，同经 OpenAI 网关转发（见 domain 层注释）。
 	PlatformOpenCode = domain.PlatformOpenCode
+	// Cline 订阅网关：只支持 API Key，上游仅 Chat Completions 一种协议。
+	PlatformCline = domain.PlatformCline
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
@@ -89,6 +91,12 @@ const (
 	DefaultOpenCodePayGAnthropicBaseURL   = "https://opencode.ai/zen"
 )
 
+// Cline 默认 base_url。订阅（coding）与按量（payg）共用同一网关与同一端点，
+// 差别只在可用模型与额度来源；上游只有 Chat Completions，无 Anthropic 原生端点。
+const (
+	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
+)
+
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
@@ -102,7 +110,7 @@ const (
 // （国产 kimi/zhipu/deepseek 与 OpenCode Zen/Go 网关）。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformOpenCode:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformOpenCode, PlatformCline:
 		return true
 	default:
 		return false
@@ -122,6 +130,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformZhipu,
 	PlatformDeepseek,
 	PlatformOpenCode,
+	PlatformCline,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
@@ -135,6 +144,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformOpenCode,
+	PlatformCline,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

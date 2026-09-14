@@ -21,6 +21,8 @@ import (
 // 仅覆盖有公开余额端点的供应商：
 //   - Kimi/Moonshot：GET https://api.moonshot.cn/v1/users/me/balance (Bearer) → data.available_balance
 //   - DeepSeek：     GET https://api.deepseek.com/user/balance (Bearer) → balance_infos[].total_balance + is_available
+//   - Cline：        GET {base}/users/me 取用户 ID，再 GET {base}/users/{id}/balance
+//     (Bearer) → data.balance（单位 1e-6 USD，控制台按 Credits 展示）
 //
 // 智谱（zhipu）无公开余额端点（OpenAPI 规格验证），仅靠响应式 429/402（见
 // ratelimit_cn_providers.go）。解析逻辑对齐 cc-switch services/balance.rs::query_deepseek。
@@ -124,7 +126,7 @@ func (s *CNProviderBalanceService) QueryBalanceForAccount(ctx context.Context, a
 
 func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error) {
 	provider := account.Platform
-	if provider != PlatformKimi && provider != PlatformDeepseek {
+	if provider != PlatformKimi && provider != PlatformDeepseek && provider != PlatformCline {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "account provider has no balance endpoint")
 	}
 
@@ -134,6 +136,15 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 	}
 
 	targetURL := cnBalanceURL(account)
+	proxyURL := s.resolveProxyURL(ctx, account)
+	// Cline 的余额端点按用户 ID 寻址，先用同一把 API Key 解析出当前用户。
+	if provider == PlatformCline {
+		userID, lookupErr := s.resolveClineUserID(ctx, account, apiKey, proxyURL)
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		targetURL = clineBalanceURL(account, userID)
+	}
 	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
 	// DeepSeek 端点由账号 base_url 衍生，不得把 API key 发往策略外主机。
 	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
@@ -141,7 +152,6 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 		return nil, infraerrors.New(http.StatusForbidden, "CN_BALANCE_URL_REJECTED", err.Error())
 	}
 	targetURL = validatedURL
-	proxyURL := s.resolveProxyURL(ctx, account)
 	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, targetURL, nil)
@@ -212,6 +222,14 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 			result.Error = "Invalid balance response: no valid balance entries"
 			return result, nil
 		}
+	case PlatformCline:
+		// Cline Credits：data.balance 以 1e-6 USD 为单位。
+		balance, ok := cnParseF64(gjson.GetBytes(bodyBytes, "data.balance").Value())
+		if !ok {
+			result.Error = "Invalid balance response: missing data.balance"
+			return result, nil
+		}
+		entries = append(entries, CNProviderBalanceEntry{Currency: "USD", Balance: balance / 1e6})
 	}
 	result.Balances = entries
 	result.Balance = entries[0].Balance
@@ -302,4 +320,48 @@ func cnBalanceURL(account *Account) string {
 	default:
 		return ""
 	}
+}
+
+// clineUserURL 解析 Cline 当前 API Key 对应的用户端点（余额端点按用户 ID 寻址）。
+func clineUserURL(account *Account) string {
+	return strings.TrimRight(strings.TrimSpace(account.GetOpenAIFormatBaseURL()), "/") + "/users/me"
+}
+
+// clineBalanceURL 解析 Cline 指定用户的余额端点。
+func clineBalanceURL(account *Account, userID string) string {
+	return strings.TrimRight(strings.TrimSpace(account.GetOpenAIFormatBaseURL()), "/") + "/users/" + userID + "/balance"
+}
+
+// resolveClineUserID 用账号 API Key 解析当前用户 ID。
+//
+// Cline 没有 /users/me/balance 这种免 ID 端点（该路径会被当成 id="me" 拒绝），
+// 因此余额查询必然多一次用户查询；错误直接上抛，避免把 401 伪装成余额为 0。
+func (s *CNProviderBalanceService) resolveClineUserID(ctx context.Context, account *Account, apiKey, proxyURL string) (string, error) {
+	targetURL, err := cnValidateProbeURL(s.cfg, clineUserURL(account))
+	if err != nil {
+		return "", infraerrors.New(http.StatusForbidden, "CN_BALANCE_URL_REJECTED", err.Error())
+	}
+	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		return "", infraerrors.Newf(http.StatusInternalServerError, "CN_BALANCE_REQUEST_BUILD_FAILED", "build request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+	account.ApplyHeaderOverrides(req.Header)
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+	if err != nil {
+		return "", infraerrors.Newf(http.StatusBadGateway, "CN_BALANCE_REQUEST_FAILED", "upstream request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, cnBalanceMaxBodyBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", infraerrors.Newf(http.StatusBadGateway, "CN_BALANCE_USER_LOOKUP_FAILED", "cline user lookup failed (HTTP %d): %s", resp.StatusCode, truncate(strings.TrimSpace(string(body)), 160))
+	}
+	userID := strings.TrimSpace(gjson.GetBytes(body, "data.id").String())
+	if userID == "" {
+		return "", infraerrors.New(http.StatusBadGateway, "CN_BALANCE_USER_LOOKUP_FAILED", "cline user lookup returned no user id")
+	}
+	return userID, nil
 }

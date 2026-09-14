@@ -15,6 +15,7 @@ export type Provider =
   | 'zhipu'
   | 'deepseek'
   | 'opencode'
+  | 'cline'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'

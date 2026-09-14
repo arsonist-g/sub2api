@@ -178,6 +178,8 @@ var providerAdapters = map[string]providerAdapter{
 	// OpenCode Zen/Go 网关同为 OpenAI 兼容 Chat Completions（/zen/go/v1 前缀
 	// 由监控 endpoint 配置提供，adapter 仅拼 /v1/chat/completions 相对路径）。
 	MonitorProviderOpenCode: providerOpenCodeChatAdapter,
+	// Cline 上游同为 OpenAI 兼容 Chat Completions，endpoint 同样填账号 base_url。
+	MonitorProviderCline: providerClineChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -235,6 +237,12 @@ var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIP
 //
 //nolint:gochecknoglobals // 由固定种子确定性派生，初始化后不变。
 var openCodeMonitorProbeSessionID = deriveStableUUIDv4("sub2api:opencode-monitor-session:v1")
+
+// providerClineChatAdapter 复用 OpenAI 兼容 Chat Completions 适配器，路径为
+// {base}/chat/completions（base 即账号 base_url，含 /api/v1）。
+//
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerClineChatAdapter = newOpenAICompatibleChatAdapter(providerClinePath)
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerOpenCodeChatAdapter = providerAdapter{
@@ -483,6 +491,7 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
 	// OpenCode 同为 OpenAI Chat Completions 同构。
 	MonitorProviderOpenCode: {"model": true, "messages": true, "stream": true},
+	MonitorProviderCline:    {"model": true, "messages": true, "stream": true},
 }
 
 func checkAPIMode(opts *CheckOptions) string {
@@ -505,7 +514,7 @@ func isOpenAICompatibleChatProvider(provider string) bool {
 	switch provider {
 	case MonitorProviderOpenAI, MonitorProviderGrok,
 		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
-		MonitorProviderOpenCode:
+		MonitorProviderOpenCode, MonitorProviderCline:
 		return true
 	default:
 		return false

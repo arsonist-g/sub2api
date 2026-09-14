@@ -868,6 +868,8 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIQuotaAutoResetService,
 	ProvideGrokQuotaService,
 	ProvideCNProviderQuotaService,
+	NewClineCatalogService,
+	NewClineProviderProbeService,
 	ProvideCNProviderBalanceService,
 	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,

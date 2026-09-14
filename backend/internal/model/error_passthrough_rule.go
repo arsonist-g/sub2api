@@ -45,6 +45,7 @@ const (
 	PlatformZhipu       = domain.PlatformZhipu
 	PlatformDeepseek    = domain.PlatformDeepseek
 	PlatformOpenCode    = domain.PlatformOpenCode
+	PlatformCline       = domain.PlatformCline
 )
 
 // AllPlatforms 返回所有支持的平台列表
@@ -59,6 +60,7 @@ func AllPlatforms() []string {
 		PlatformZhipu,
 		PlatformDeepseek,
 		PlatformOpenCode,
+		PlatformCline,
 	}
 }
 

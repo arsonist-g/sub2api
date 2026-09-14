@@ -215,6 +215,19 @@
             <PlatformIcon platform="opencode" size="sm" />
             OpenCode
           </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('cline')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'cline'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="cline" size="sm" />
+            Cline
+          </button>
         </div>
       </div>
 
@@ -1426,6 +1439,14 @@
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
+
+        <!-- Cline：实时拉取可用模型并逐模型选择上游供应商偏好 -->
+        <ClineModelProviderPanel
+          v-if="form.platform === 'cline'"
+          v-model="clineModelProviders"
+          :api-key="apiKeyValue"
+          :account-mode="accountMode"
+        />
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
@@ -3864,6 +3885,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { ClineModelProviders } from '@/api/admin/cline'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3896,6 +3918,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ClineModelProviderPanel from '@/components/account/ClineModelProviderPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -3906,6 +3929,7 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  cnChatCompletionsOnly,
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
@@ -4011,6 +4035,8 @@ const apiKeyValuePlaceholder = computed(() => {
       return 'sk-...'
     case 'opencode':
       return 'ocsk-...'
+    case 'cline':
+      return 'sk_...'
     default:
       return 'sk-ant-...'
   }
@@ -4112,19 +4138,24 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   anthropic: '',
   responses: ''
 })
+// Cline：逐模型的上游供应商偏好，写入 credentials.model_providers
+const clineModelProviders = ref<ClineModelProviders>({})
 const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode'
+  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode' || form.platform === 'cline'
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode') {
+const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline'>(() => {
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode' || form.platform === 'cline') {
     return form.platform
   }
   return 'kimi'
 })
-// 当前平台可选的协议档（responses 仅 deepseek / kimi）。
+// 当前平台可选的协议档（responses 仅 deepseek / kimi；cline 上游只有 Chat Completions）。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
+  if (cnChatCompletionsOnly(form.platform)) {
+    return [{ value: 'chat_completions', labelKey: 'chatCompletions' }]
+  }
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
     { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
@@ -4144,7 +4175,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
   return opts
 })
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode', mode: CnAccountMode) {
+function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline', mode: CnAccountMode) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
@@ -4158,6 +4189,8 @@ const cnAccentActiveClass = computed(() => {
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
     case 'opencode':
       return 'border-lime-500 bg-lime-50 dark:bg-lime-900/20'
+    case 'cline':
+      return 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4172,22 +4205,28 @@ const cnAccentIconClass = computed(() => {
       return 'bg-teal-500 text-white'
     case 'opencode':
       return 'bg-lime-500 text-white'
+    case 'cline':
+      return 'bg-rose-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
 // opencode 的主形态是 Go 订阅故默认 coding（按量 Zen 可手动切回 payg），
-// 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode') {
+// cline 同样默认 coding（Cline Pass 订阅，payg 可手动切换），
+// 协议回落 adaptive（cline 固定 chat_completions），并把 base url 重置为该平台默认端点。
+function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline') {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
-  apiProtocol.value = 'adaptive'
+  apiProtocol.value = cnChatCompletionsOnly(platform) ? 'chat_completions' : 'adaptive'
   if (platform === 'deepseek') {
     accountMode.value = 'payg'
   }
   if (platform === 'opencode') {
+    accountMode.value = 'coding'
+  }
+  if (platform === 'cline') {
     accountMode.value = 'coding'
   }
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
@@ -4735,7 +4774,7 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
+    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek' || newPlatform === 'cline') {
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
@@ -5208,6 +5247,7 @@ const resetForm = () => {
   accountMode.value = 'payg'
   apiProtocol.value = 'adaptive'
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
+  clineModelProviders.value = {}
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5675,7 +5715,7 @@ const handleSubmit = async () => {
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
   // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode') {
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode' || form.platform === 'cline') {
     credentials.account_mode = accountMode.value
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {
@@ -5697,6 +5737,10 @@ const handleSubmit = async () => {
     if (form.platform === 'zhipu' && accountMode.value === 'coding') {
       if (zhipuOrganization.value.trim()) credentials.zhipu_organization = zhipuOrganization.value.trim()
       if (zhipuProject.value.trim()) credentials.zhipu_project = zhipuProject.value.trim()
+    }
+    // Cline：逐模型上游供应商偏好（空对象不落盘）
+    if (form.platform === 'cline' && Object.keys(clineModelProviders.value).length > 0) {
+      credentials.model_providers = clineModelProviders.value
     }
   }
 

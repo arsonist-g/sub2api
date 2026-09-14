@@ -23,6 +23,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
 	MonitorProviderOpenCode:    {},
+	MonitorProviderCline:       {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -37,6 +38,7 @@ var probeCapableProviders = map[string]struct{}{
 	MonitorProviderKimi:      {},
 	MonitorProviderZhipu:     {},
 	MonitorProviderDeepseek:  {},
+	MonitorProviderCline:     {},
 }
 
 // validateProvider 校验 provider 字符串。
@@ -217,6 +219,8 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
 //   - opencode coding：GetCodingPlanProvider 须识别为 opencode（自定义域名
 //     无法路由用量端点）；payg 无任何用量/余额 API，不支持
+//   - cline coding：同上，GetCodingPlanProvider 须识别为 cline；payg 走 Credits
+//     余额（先查 userId 再查余额）
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
@@ -241,6 +245,14 @@ func monitorAccountQuotaCapability(account *Account) error {
 			return nil
 		}
 		return ErrChannelMonitorAccountNotSupportable
+	case PlatformCline:
+		if account.IsCodingPlan() {
+			if account.GetCodingPlanProvider() != PlatformCline {
+				return ErrChannelMonitorAccountNotSupportable
+			}
+			return nil
+		}
+		return nil
 	case PlatformAnthropic:
 		if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
 			return nil

@@ -254,6 +254,7 @@ import {
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_OPENCODE,
+  PROVIDER_CLINE,
   PROVIDERS,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
@@ -280,6 +281,7 @@ const providerTabs = computed<{ value: Provider; label: string }[]>(() => [
   { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') },
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_OPENCODE, label: t('monitorCommon.providers.opencode') },
+  { value: PROVIDER_CLINE, label: t('monitorCommon.providers.cline') },
 ])
 
 const activeProvider = ref<Provider>(PROVIDER_ANTHROPIC)

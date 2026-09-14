@@ -265,6 +265,11 @@ export function cnSupportsNativeResponses(platform: string): boolean {
   return platform === 'deepseek' || platform === 'kimi' || platform === 'opencode'
 }
 
+/** Cline 上游仅提供 Chat Completions 端点，协议选择器只保留该档。 */
+export function cnChatCompletionsOnly(platform: string): boolean {
+  return platform === 'cline'
+}
+
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
   protocol: CnApiProtocol
@@ -274,7 +279,7 @@ export interface CnBaseUrlPreset {
 }
 
 /** 各供应商按账号类型 × API 协议分档的快捷端点（点击快速填充，输入框仍可自由填写）。 */
-export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek' | 'opencode', CnBaseUrlPreset[]> = {
+export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline', CnBaseUrlPreset[]> = {
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
@@ -303,6 +308,12 @@ export const CN_BASE_URL_PRESETS: Record<'kimi' | 'zhipu' | 'deepseek' | 'openco
     { mode: 'payg', protocol: 'chat_completions', label: 'OpenCode Zen', url: 'https://opencode.ai/zen/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'OpenCode Zen Anthropic', url: 'https://opencode.ai/zen' },
     { mode: 'payg', protocol: 'responses', label: 'OpenCode Zen Responses', url: 'https://opencode.ai/zen/v1' }
+  ],
+  // Cline：coding = Cline Pass 订阅（cline-pass/*），payg = Credits 余额；
+  // 两种模式共用同一 API Key 与同一 Chat Completions base url。
+  cline: [
+    { mode: 'coding', protocol: 'chat_completions', label: 'Cline Pass', url: 'https://api.cline.bot/api/v1' },
+    { mode: 'payg', protocol: 'chat_completions', label: 'Cline Credits', url: 'https://api.cline.bot/api/v1' }
   ]
 }
 
@@ -338,6 +349,8 @@ export function defaultCNBaseUrl(
       return 'https://api.deepseek.com'
     case 'opencode':
       return mode === 'coding' ? 'https://opencode.ai/zen/go/v1' : 'https://opencode.ai/zen/v1'
+    case 'cline':
+      return 'https://api.cline.bot/api/v1'
     default:
       return ''
   }
@@ -345,7 +358,7 @@ export function defaultCNBaseUrl(
 
 /** 返回自适应模式下需要配置的原生协议及其默认端点。 */
 export function defaultCNAdaptiveBaseUrls(
-  platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode',
+  platform: 'kimi' | 'zhipu' | 'deepseek' | 'opencode' | 'cline',
   mode: CnAccountMode
 ): Record<CnNativeApiProtocol, string> {
   return {
@@ -360,11 +373,11 @@ export function defaultCNAdaptiveBaseUrls(
 // 共用，避免多处复制条件后一处改另一处漏改。
 
 export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
-  return (platform === 'kimi' || platform === 'zhipu' || platform === 'opencode') && accountMode === 'coding'
+  return (platform === 'kimi' || platform === 'zhipu' || platform === 'opencode' || platform === 'cline') && accountMode === 'coding'
 }
 
 export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
-  return (platform === 'kimi' || platform === 'deepseek') && accountMode !== 'coding'
+  return (platform === 'kimi' || platform === 'deepseek' || platform === 'cline') && accountMode !== 'coding'
 }
 
 /**

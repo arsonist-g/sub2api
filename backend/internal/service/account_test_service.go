@@ -354,6 +354,10 @@ func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Cont
 			// 做连通性测试（与 cc-switch 预设的默认路由一致）。
 			testModelID = "deepseek-v4-flash"
 		}
+		if account.Platform == PlatformCline {
+			// Cline 同样没有 gpt-* 目录模型，用订阅内最轻量的一档做连通性测试。
+			testModelID = "cline-pass/deepseek-v4.1-flash"
+		}
 	}
 	testModelID = account.GetMappedModel(testModelID)
 

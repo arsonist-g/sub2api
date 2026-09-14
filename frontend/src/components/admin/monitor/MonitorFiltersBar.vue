@@ -76,6 +76,7 @@ import {
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_OPENCODE,
+  PROVIDER_CLINE,
 } from '@/constants/channelMonitor'
 
 defineProps<{
@@ -106,6 +107,7 @@ const providerFilterOptions = computed(() => [
   { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') },
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_OPENCODE, label: t('monitorCommon.providers.opencode') },
+  { value: PROVIDER_CLINE, label: t('monitorCommon.providers.cline') },
 ])
 
 const enabledFilterOptions = computed(() => [

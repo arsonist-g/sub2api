@@ -18,6 +18,7 @@ export const PROVIDER_KIMI: Provider = 'kimi'
 export const PROVIDER_ZHIPU: Provider = 'zhipu'
 export const PROVIDER_DEEPSEEK: Provider = 'deepseek'
 export const PROVIDER_OPENCODE: Provider = 'opencode'
+export const PROVIDER_CLINE: Provider = 'cline'
 
 export const DEFAULT_GROK_ENDPOINT = 'https://api.x.ai'
 export const DEFAULT_GROK_MODEL = 'grok-4.5'
@@ -27,6 +28,7 @@ export const DEFAULT_KIMI_ENDPOINT = 'https://api.moonshot.cn'
 export const DEFAULT_ZHIPU_ENDPOINT = 'https://open.bigmodel.cn'
 export const DEFAULT_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com'
 export const DEFAULT_OPENCODE_ENDPOINT = 'https://opencode.ai/zen/go'
+export const DEFAULT_CLINE_ENDPOINT = 'https://api.cline.bot/api/v1'
 
 export const CHECK_MODE_PROBE: CheckMode = 'probe'
 export const CHECK_MODE_QUOTA: CheckMode = 'quota'
@@ -45,6 +47,7 @@ export const PROVIDERS: readonly Provider[] = [
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
   PROVIDER_OPENCODE,
+  PROVIDER_CLINE,
 ]
 
 /** 仅支持配额模式（无探活 adapter）的 provider。 */

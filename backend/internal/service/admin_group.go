@@ -249,6 +249,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return xai.DefaultModelIDs()
 	case PlatformOpenCode:
 		return OpenCodeDefaultModelIDs()
+	case PlatformCline:
+		return ClineDefaultModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:

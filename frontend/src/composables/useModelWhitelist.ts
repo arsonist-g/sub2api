@@ -221,6 +221,25 @@ const opencodeModels = [
   'qwen3.6-plus'
 ]
 
+// Cline Pass 订阅模型（与后端 cline_models.go 的官方清单一致；实时获取失败时的兜底）
+const clineModels = [
+  'cline-pass/deepseek-v4.1-flash',
+  'cline-pass/deepseek-v4-flash',
+  'cline-pass/glm-5.3',
+  'cline-pass/glm-5.3-flash',
+  'cline-pass/minimax-m3',
+  'cline-pass/kimi-k2.6',
+  'cline-pass/kimi-k2.7-code',
+  'cline-pass/qwen3.7-plus',
+  'cline-pass/qwen3.7-max',
+  'cline-pass/mimo-v2.5',
+  'cline-pass/mimo-v2.5-pro',
+  'cline-pass/qwen3.8-max',
+  'cline-pass/deepseek-v4-pro',
+  'cline-pass/kimi-k3',
+  'cline-pass/glm-5.2'
+]
+
 // 字节跳动 豆包
 const doubaoModels = [
   'doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-pro-4k',
@@ -287,7 +306,8 @@ const allModelsList: string[] = [
   ...sparkModels,
   ...hunyuanModels,
   ...perplexityModels,
-  ...opencodeModels
+  ...opencodeModels,
+  ...clineModels
 ]
 
 // 转换为下拉选项格式
@@ -471,6 +491,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'moonshot':
     case 'kimi': return moonshotModels
     case 'opencode': return opencodeModels
+    case 'cline': return clineModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels

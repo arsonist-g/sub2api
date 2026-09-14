@@ -1136,6 +1136,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	// Cline 组未配置自定义模型清单时回落 Cline Pass 订阅模型，而不是落到下面的
+	// Anthropic 默认模型列表（那会让客户端拿到一堆 cline 组里不可用的 claude-*）。
+	if platform == service.PlatformCline {
+		writeModelsList(c, service.PlatformCline, service.ClineDefaultModelIDs())
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",

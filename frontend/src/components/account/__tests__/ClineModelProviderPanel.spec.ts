@@ -94,8 +94,8 @@ describe('ClineModelProviderPanel', () => {
     const wrapper = buildWrapper()
     await fetchCatalog(wrapper)
 
-    // 未探测前没有可选供应商
-    expect(wrapper.text()).toContain('admin.accounts.cnProviders.clineModels.noChoice')
+    // 未探测前没有可选供应商，提示的是「未探测」而不是「上游固定管道」
+    expect(wrapper.text()).toContain('admin.accounts.cnProviders.clineModels.notProbed')
 
     await wrapper.get(`[data-testid="cline-model-probe-${MODEL_ID}"]`).trigger('click')
     await flushPromises()
@@ -166,5 +166,51 @@ describe('ClineModelProviderPanel', () => {
       account_id: 42,
       account_mode: 'coding'
     })
+  })
+
+  it('未拉取清单时按白名单与已存偏好预渲染，可直接探测上游', async () => {
+    const wrapper = buildWrapper({
+      modelWhitelist: [MODEL_ID],
+      modelValue: {
+        [MODEL_ID]: { pipeline: 'planner', mode: 'only', providers: ['deepseek'] }
+      }
+    })
+
+    expect(fetchModels).not.toHaveBeenCalled()
+    const row = wrapper.get(`[data-testid="cline-model-row-${MODEL_ID}"]`)
+    expect(row.text()).toContain(MODEL_ID)
+    expect(row.text()).toContain('admin.accounts.cnProviders.clineModels.pipeline.planner')
+    expect(row.text()).toContain('admin.accounts.cnProviders.clineModels.whitelistBadge')
+
+    // 上次选中的上游直接可见，无需先探测
+    const providerChip = row.findAll('button').find((item) => item.text() === 'deepseek')
+    expect(providerChip).toBeTruthy()
+
+    await row.get(`[data-testid="cline-model-probe-${MODEL_ID}"]`).trigger('click')
+    await flushPromises()
+    expect(probeProviders).toHaveBeenCalledWith({
+      api_key: 'sk_test_key',
+      account_id: undefined,
+      model_ids: [MODEL_ID]
+    })
+  })
+
+  it('用快捷按钮把模型加入/移出白名单', async () => {
+    const wrapper = buildWrapper({ modelWhitelist: [], modelValue: {} })
+    await fetchCatalog(wrapper)
+
+    expect(wrapper.text()).toContain('admin.accounts.cnProviders.clineModels.whitelistEmptyHint')
+
+    const button = wrapper.get(`[data-testid="cline-model-whitelist-${MODEL_ID}"]`)
+    expect(button.text()).toBe('admin.accounts.cnProviders.clineModels.whitelistAdd')
+    await button.trigger('click')
+    expect(wrapper.emitted('update:modelWhitelist')!.at(-1)![0]).toEqual([MODEL_ID])
+
+    const inList = buildWrapper({ modelWhitelist: [MODEL_ID], modelValue: {} })
+    await fetchCatalog(inList)
+    const removeButton = inList.get(`[data-testid="cline-model-whitelist-${MODEL_ID}"]`)
+    expect(removeButton.text()).toBe('admin.accounts.cnProviders.clineModels.whitelistRemove')
+    await removeButton.trigger('click')
+    expect(inList.emitted('update:modelWhitelist')!.at(-1)![0]).toEqual([])
   })
 })

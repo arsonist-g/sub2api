@@ -30,11 +30,14 @@
     <p v-else-if="error" class="px-3 pb-3 text-xs text-red-600 dark:text-red-400" role="alert">
       {{ error }}
     </p>
-    <p v-else-if="!fetchedAt" class="px-3 pb-3 text-xs text-gray-500 dark:text-gray-400">
+    <p v-else-if="!fetchedAt && configuredRows.length === 0" class="px-3 pb-3 text-xs text-gray-500 dark:text-gray-400">
       {{ t('admin.accounts.cnProviders.clineModels.notFetched') }}
     </p>
 
-    <div v-if="canFetch && fetchedAt" class="border-t border-gray-200 dark:border-dark-600">
+    <div
+      v-if="canFetch && (fetchedAt || configuredRows.length > 0)"
+      class="border-t border-gray-200 dark:border-dark-600"
+    >
       <div class="flex flex-wrap items-center gap-2 p-3">
         <input
           v-model="search"
@@ -56,10 +59,14 @@
           </svg>
           {{ t('admin.accounts.cnProviders.clineModels.probeAll', { count: probeTargetCount }) }}
         </button>
-        <span class="text-xs text-gray-500 dark:text-gray-400">
+        <span v-if="fetchedAt" class="text-xs text-gray-500 dark:text-gray-400">
           {{ t('admin.accounts.cnProviders.clineModels.fetchedAt') }} {{ formatDateTimeToMinute(fetchedAt) }}
         </span>
       </div>
+
+      <p v-if="showWhitelistHint" class="px-3 pb-3 text-xs text-gray-500 dark:text-gray-400">
+        {{ t('admin.accounts.cnProviders.clineModels.whitelistEmptyHint') }}
+      </p>
 
       <p v-if="totalRows === 0" class="px-3 pb-3 text-xs text-gray-500 dark:text-gray-400">
         {{ t('admin.accounts.cnProviders.clineModels.empty') }}
@@ -111,24 +118,43 @@
                   <span class="badge badge-gray">
                     {{ t(`admin.accounts.cnProviders.clineModels.pipeline.${preferenceOf(row.id).pipeline}`) }}
                   </span>
+                  <span v-if="inWhitelist(row.id)" class="badge badge-primary">
+                    {{ t('admin.accounts.cnProviders.clineModels.whitelistBadge') }}
+                  </span>
                   <span v-if="probedAt[row.id]" class="text-xs text-gray-400 dark:text-gray-500">
                     {{ t('admin.accounts.cnProviders.clineModels.probedAt') }} {{ formatDateTimeToMinute(probedAt[row.id]) }}
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                :data-testid="`cline-model-probe-${row.id}`"
-                :disabled="!!probing[row.id] || !canFetch"
-                @click="probe([row.id])"
-              >
-                <svg v-if="probing[row.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {{ probing[row.id] ? t('admin.accounts.cnProviders.clineModels.probing') : t('admin.accounts.cnProviders.clineModels.probe') }}
-              </button>
+              <div class="flex shrink-0 flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :data-testid="`cline-model-probe-${row.id}`"
+                  :disabled="!!probing[row.id] || !canFetch"
+                  @click="probe([row.id])"
+                >
+                  <svg v-if="probing[row.id]" class="mr-1.5 h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {{ probing[row.id] ? t('admin.accounts.cnProviders.clineModels.probing') : t('admin.accounts.cnProviders.clineModels.probe') }}
+                </button>
+                <button
+                  v-if="canEditWhitelist"
+                  type="button"
+                  :class="[
+                    'rounded-full border px-2 py-0.5 text-xs transition-colors',
+                    inWhitelist(row.id)
+                      ? 'border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-dark-500 dark:text-gray-300 dark:hover:bg-dark-600'
+                  ]"
+                  :data-testid="`cline-model-whitelist-${row.id}`"
+                  @click="toggleWhitelist(row.id)"
+                >
+                  {{ inWhitelist(row.id) ? t('admin.accounts.cnProviders.clineModels.whitelistRemove') : t('admin.accounts.cnProviders.clineModels.whitelistAdd') }}
+                </button>
+              </div>
             </div>
 
             <p v-if="rowError[row.id]" class="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">
@@ -150,7 +176,7 @@
                 @update:model-value="setMode(row.id, $event)"
               />
               <span v-if="!hasProviders(row.id)" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.cnProviders.clineModels.noChoice') }}
+                {{ hasProbeResult(row.id) ? t('admin.accounts.cnProviders.clineModels.noChoice') : t('admin.accounts.cnProviders.clineModels.notProbed') }}
               </span>
               <button
                 v-else-if="preferenceOf(row.id).mode !== 'auto'"
@@ -207,6 +233,8 @@ import {
 // 面板只把「有实际注入意义」的条目写回 credentials：auto（不注入）与空供应商列表不落盘，
 // 避免把探测过程中的临时状态持久化。
 const CATALOG_SECTION_KEY = 'catalog'
+/** 未拉取模型清单时的默认分区：账号白名单与已存上游偏好里的模型。 */
+const CONFIGURED_SECTION_KEY = 'configured'
 /** 目录模型可达数百条，默认折叠且仅渲染前 N 条（配合筛选框使用）。 */
 const CATALOG_RENDER_LIMIT = 50
 
@@ -229,10 +257,13 @@ const props = defineProps<{
   accountId?: number
   accountMode?: 'coding' | 'payg'
   modelValue: ClineModelProviders
+  /** 账号模型白名单（credentials.model_mapping 中 from===to 的条目）。 */
+  modelWhitelist?: string[]
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ClineModelProviders): void
+  (e: 'update:modelWhitelist', value: string[]): void
 }>()
 
 const { t } = useI18n()
@@ -296,6 +327,59 @@ function providerLabel(modelId: string, provider: string): string {
   const index = preference.providers.indexOf(provider)
   return index < 0 ? provider : `${index + 1}. ${provider}`
 }
+
+/** 是否已拿到过该模型的上游信息：本次会话探测过，或上次保存的偏好里带了管道。 */
+function hasProbeResult(modelId: string): boolean {
+  return (
+    availableProviders.value[modelId] !== undefined ||
+    preferenceOf(modelId).pipeline !== 'unknown'
+  )
+}
+
+/** 白名单由父组件同步，未传入时不渲染快捷加入按钮。 */
+const canEditWhitelist = computed(() => Array.isArray(props.modelWhitelist))
+
+const showWhitelistHint = computed(
+  () => canEditWhitelist.value && (props.modelWhitelist ?? []).length === 0
+)
+
+function inWhitelist(modelId: string): boolean {
+  return (props.modelWhitelist ?? []).includes(modelId)
+}
+
+/** 一键加入/移出账号模型白名单：省去复制模型名再回到白名单选择器里查找。 */
+function toggleWhitelist(modelId: string) {
+  const current = props.modelWhitelist ?? []
+  const next = current.includes(modelId)
+    ? current.filter((item) => item !== modelId)
+    : [...current, modelId]
+  emit('update:modelWhitelist', next)
+}
+
+/** 默认渲染源：白名单顺序优先，再补上已存上游偏好里的模型。 */
+const configuredModelIds = computed(() => {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  const push = (raw: string) => {
+    const id = raw.trim()
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    ids.push(id)
+  }
+  for (const id of props.modelWhitelist ?? []) push(String(id))
+  for (const id of Object.keys(prefs.value)) push(id)
+  return ids
+})
+
+/** 已拉取清单里出现过的模型不重复渲染在默认分区。 */
+const configuredRows = computed<PanelRow[]>(() => {
+  const fetched = new Set<string>()
+  for (const group of groups.value) {
+    for (const model of group.models) fetched.add(model.id)
+  }
+  for (const model of catalog.value) fetched.add(model.id)
+  return configuredModelIds.value.filter((id) => !fetched.has(id)).map((id) => ({ id }))
+})
 
 function normalizeProviders(value: unknown): ClineModelProviders {
   if (!value || typeof value !== 'object') return {}
@@ -376,6 +460,17 @@ const sections = computed<PanelSection[]>(() => {
     (row.description ?? '').toLowerCase().includes(keyword)
 
   const result: PanelSection[] = []
+
+  const configured = configuredRows.value.filter(matches)
+  if (configured.length > 0) {
+    result.push({
+      key: CONFIGURED_SECTION_KEY,
+      label: t('admin.accounts.cnProviders.clineModels.configured'),
+      rows: configured,
+      truncated: 0
+    })
+  }
+
   for (const group of groups.value) {
     const rows = group.models
       .map((model) => ({ id: model.id, description: model.description }))

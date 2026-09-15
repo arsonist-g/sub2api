@@ -254,6 +254,7 @@
         <ClineModelProviderPanel
           v-if="account.platform === 'cline'"
           v-model="editClineModelProviders"
+          v-model:model-whitelist="allowedModels"
           :api-key="editApiKey"
           :account-id="account.id"
           :account-mode="editAccountMode"

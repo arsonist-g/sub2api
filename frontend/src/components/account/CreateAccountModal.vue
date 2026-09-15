@@ -1444,6 +1444,7 @@
         <ClineModelProviderPanel
           v-if="form.platform === 'cline'"
           v-model="clineModelProviders"
+          v-model:model-whitelist="allowedModels"
           :api-key="apiKeyValue"
           :account-mode="accountMode"
         />

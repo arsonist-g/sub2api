@@ -41,10 +41,16 @@ const (
 	ClineProviderModeOnly  = "only"
 	ClineProviderModeOrder = "order"
 
-	clineProbeSentinel    = "__probe__"
-	clineProbeMaxTokens   = 1
-	clineProbeTimeout     = 60 * time.Second
-	clineProbeConcurrency = 4
+	clineProbeSentinel = "__probe__"
+	// clineProbeMaxTokens 是探测请求的输出预算。上游对过小的 max_tokens 直接返回
+	// 500 {"error":"empty response content"}：此时报错里既没有供应商清单、也拿不到
+	// 成功响应，探测会退化成 unknown；而推理模型要先花掉思考 token 才会产出正文，
+	// 预算太小必然撞上这个 500。因此起点取一个推理模型也能出正文的量级。
+	clineProbeMaxTokens = 256
+	// clineProbeEscalatedMaxTokens 是命中空正文后的升级预算，只对仍被截断的模型多发一次。
+	clineProbeEscalatedMaxTokens = 1024
+	clineProbeTimeout            = 60 * time.Second
+	clineProbeConcurrency        = 4
 	// 一次探测每个模型要发 1-2 个真实推理请求，上限防止误用把额度打空。
 	clineProbeMaxModels = 40
 )
@@ -292,10 +298,10 @@ func (s *ClineProviderProbeService) probeModel(
 		build    func() []byte
 	}{
 		{pipeline: ClinePipelinePlanner, build: func() []byte {
-			return clineProbeBody(modelID, "providerOptions.gateway.only")
+			return clineProbeBody(modelID, "providerOptions.gateway.only", clineProbeMaxTokens)
 		}},
 		{pipeline: ClinePipelineDirect, build: func() []byte {
-			return clineProbeBody(modelID, "provider.only")
+			return clineProbeBody(modelID, "provider.only", clineProbeMaxTokens)
 		}},
 	}
 
@@ -303,6 +309,14 @@ func (s *ClineProviderProbeService) probeModel(
 		status, body, err := s.postProbe(ctx, targetURL, apiKey, proxyURL, accountID, concurrency, account, attempt.build())
 		if err != nil {
 			continue
+		}
+		// 预算不足导致的空正文不是供应商信号：抬预算重试同一管道一次，
+		// 避免把本可探测的模型误判为 unknown。
+		if clineProbeBudgetExhausted(body) {
+			retryBody, _ := sjson.SetBytes(attempt.build(), "max_tokens", clineProbeEscalatedMaxTokens)
+			if retryStatus, retryResp, retryErr := s.postProbe(ctx, targetURL, apiKey, proxyURL, accountID, concurrency, account, retryBody); retryErr == nil {
+				status, body = retryStatus, retryResp
+			}
 		}
 		if providers := extractClineProbeProviders(body); len(providers) > 0 {
 			probe.Pipeline = attempt.pipeline
@@ -355,13 +369,21 @@ func (s *ClineProviderProbeService) postProbe(
 }
 
 // clineProbeBody 构造探测请求体：用一个不存在的供应商名把上游的可用清单逼出来。
-func clineProbeBody(modelID, path string) []byte {
+func clineProbeBody(modelID, path string, maxTokens int) []byte {
 	body, _ := sjson.SetBytes(nil, "model", modelID)
 	body, _ = sjson.SetBytes(body, "stream", false)
-	body, _ = sjson.SetBytes(body, "max_tokens", clineProbeMaxTokens)
+	body, _ = sjson.SetBytes(body, "max_tokens", maxTokens)
 	body, _ = sjson.SetBytes(body, "messages", []map[string]string{{"role": "user", "content": "hi"}})
 	body, _ = sjson.SetBytes(body, path, []string{clineProbeSentinel})
 	return body
+}
+
+// clineProbeEmptyContentMarker 是上游在输出预算不足时返回的报错标记。
+const clineProbeEmptyContentMarker = "empty response content"
+
+// clineProbeBudgetExhausted 判断响应是否为「预算不足导致空正文」。
+func clineProbeBudgetExhausted(body []byte) bool {
+	return bytes.Contains(body, []byte(clineProbeEmptyContentMarker))
 }
 
 func (s *ClineProviderProbeService) resolveProxyURL(ctx context.Context, account *Account) string {

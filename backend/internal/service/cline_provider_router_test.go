@@ -203,3 +203,43 @@ func TestClineProviderProbeService_ClassifiesPipeline(t *testing.T) {
 		})
 	}
 }
+
+// clineEmptyContentFixture 是上游在输出预算不足时的真实报错：既没有供应商清单，
+// 也不是成功响应，探测必须抬预算重试才能拿到信号。
+const clineEmptyContentFixture = `{"error":"empty response content","success":false}`
+
+func TestClineProviderProbeService_EscalatesBudgetOnEmptyContent(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		clineProbeResponse(http.StatusInternalServerError, clineEmptyContentFixture),
+		clineProbeResponse(http.StatusInternalServerError, clineProbeErrorFixture("Vercel", clinePlannerInner)),
+	}}
+	svc := &ClineProviderProbeService{httpUpstream: upstream, cfg: &config.Config{}}
+
+	got, err := svc.ProbeModels(t.Context(), nil, "sk-test", DefaultClineBaseURL, []string{"cline-pass/glm-5.3"})
+	require.NoError(t, err)
+	probe := got["cline-pass/glm-5.3"]
+	require.Equal(t, ClinePipelinePlanner, probe.Pipeline)
+	require.Len(t, probe.Providers, 14)
+
+	require.Len(t, upstream.bodies, 2)
+	require.EqualValues(t, clineProbeMaxTokens, gjson.GetBytes(upstream.bodies[0], "max_tokens").Int())
+	require.EqualValues(t, clineProbeEscalatedMaxTokens, gjson.GetBytes(upstream.bodies[1], "max_tokens").Int())
+	require.Equal(t, clineProbeSentinel, gjson.GetBytes(upstream.bodies[1], "providerOptions.gateway.only.0").String())
+}
+
+func TestClineProviderProbeService_UnknownWhenBudgetAlwaysExhausted(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		clineProbeResponse(http.StatusInternalServerError, clineEmptyContentFixture),
+		clineProbeResponse(http.StatusInternalServerError, clineEmptyContentFixture),
+		clineProbeResponse(http.StatusInternalServerError, clineEmptyContentFixture),
+		clineProbeResponse(http.StatusInternalServerError, clineEmptyContentFixture),
+	}}
+	svc := &ClineProviderProbeService{httpUpstream: upstream, cfg: &config.Config{}}
+
+	got, err := svc.ProbeModels(t.Context(), nil, "sk-test", DefaultClineBaseURL, []string{"cline-pass/glm-5.2"})
+	require.NoError(t, err)
+	probe := got["cline-pass/glm-5.2"]
+	require.Equal(t, ClinePipelineUnknown, probe.Pipeline)
+	require.Empty(t, probe.Providers)
+	require.Len(t, upstream.bodies, 4)
+}

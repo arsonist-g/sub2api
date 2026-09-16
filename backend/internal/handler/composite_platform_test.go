@@ -35,6 +35,7 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 		{model: "k3", platform: service.PlatformKimi},
 		{model: "glm-5.2", platform: service.PlatformZhipu},
 		{model: "deepseek-v3.2", platform: service.PlatformDeepseek},
+		{model: "cline-pass/deepseek-v4.1-flash", platform: service.PlatformCline},
 	}
 	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses", "/v1/responses/input_tokens", "/v1/messages/count_tokens"} {
 		for _, provider := range providers {
@@ -196,6 +197,31 @@ func TestOpenAICompatibleTextTargetAllowsOpenCodeViaEntryResolver(t *testing.T) 
 	upstream, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context())
 	require.True(t, ok)
 	require.Equal(t, "qwen3.8-max", upstream)
+}
+
+// composite 分组 + OpenAI 兼容端点 + cline 目标：入口须放行。修复前白名单缺
+// cline，路由表即使已把 cline-pass/* 指向 cline 平台，请求仍会在协议转换之前
+// 被 400 拒绝（"Model is not supported by this OpenAI-compatible endpoint for
+// composite groups"）。
+func TestOpenAICompatibleTextTargetAllowsClineViaEntryResolver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite}}
+	resolver := fakeCompositeEntryResolver{ok: true, decision: service.CompositeRouteDecision{
+		Matched:        true,
+		Source:         service.CompositeRouteSourceExplicit,
+		TargetPlatform: service.PlatformCline,
+		UpstreamModel:  "cline-pass/deepseek-v4.1-flash",
+	}}
+
+	require.True(t, openAICompatibleTextTargetAllowed(c, resolver, apiKey, "cline-pass/deepseek-v4.1-flash"))
+	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, service.PlatformCline, platform)
+	upstream, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, "cline-pass/deepseek-v4.1-flash", upstream)
 }
 
 // 显式路由决策（路由表/账号目录）优先于 detector：同名模型（detector 会判

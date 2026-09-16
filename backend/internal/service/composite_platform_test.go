@@ -176,6 +176,12 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "moonshot prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		// cline-pass/ 命名空间归属 cline：命名空间判定必须先于前缀剥离，否则
+		// cline-pass/deepseek-v4.1-flash 被判成 deepseek、cline-pass/mimo-* 被判成 opencode。
+		{name: "cline pass namespace deepseek", model: "cline-pass/deepseek-v4.1-flash", platform: PlatformCline, ok: true},
+		{name: "cline pass namespace mimo", model: "cline-pass/mimo-v2.5", platform: PlatformCline, ok: true},
+		{name: "cline pass namespace glm", model: "cline-pass/glm-5.2", platform: PlatformCline, ok: true},
+		{name: "cline bare model keeps deepseek", model: "deepseek-v4.1-flash", platform: PlatformDeepseek, ok: true},
 		// OpenCode Go 独占模型 → opencode（免配置可用）。
 		{name: "opencode exclusive qwen", model: "qwen3.8-max", platform: PlatformOpenCode, ok: true},
 		{name: "opencode exclusive minimax", model: "minimax-m3", platform: PlatformOpenCode, ok: true},

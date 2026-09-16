@@ -296,7 +296,7 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, resolver service.Composit
 	return compositeTargetPlatformAllowed(c, resolver, apiKey, model,
 		service.PlatformOpenAI, service.PlatformGrok,
 		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformOpenCode)
+		service.PlatformOpenCode, service.PlatformCline)
 }
 
 // isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket

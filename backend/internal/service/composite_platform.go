@@ -93,6 +93,9 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 // 错误路由到 zhipu/kimi/deepseek/grok/openai 平台。不与任何已支持平台冲突的
 // OpenCode Go 独占模型（qwen3.*/minimax-*/longcat-*/mimo-*/hy*/muse-spark-*）
 // 按精确名单识别为 opencode，使 composite 分组免配置即可服务这些模型。
+// Cline 订阅模型带 cline-pass/ 命名空间（cline-pass/deepseek-v4.1-flash），该
+// 前缀唯一对应 cline 平台，故按命名空间直接识别；否则会被下方的前缀剥离逻辑
+// 误判为 deepseek / zhipu / opencode，composite 分组将派给别的平台账号。
 func DetectModelPlatform(model string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if normalized == "" {
@@ -118,6 +121,11 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformZhipu, true
 		case "deepseek":
 			return PlatformDeepseek, true
+		case "cline-pass":
+			// Cline 订阅模型的命名空间。不在此拦截会落到下方的前缀剥离逻辑：
+			// cline-pass/deepseek-v4.1-flash 会被判成 deepseek、cline-pass/mimo-* 被判成
+			// opencode，composite 分组会把请求派给这些平台（而不是 cline）的账号。
+			return PlatformCline, true
 		}
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")

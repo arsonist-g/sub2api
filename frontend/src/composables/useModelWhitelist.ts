@@ -516,13 +516,12 @@ export function getPresetMappingsByPlatform(platform: string) {
 // 构建模型映射对象（用于 API）
 // =====================
 
-// isValidWildcardPattern 校验通配符格式：* 只能放在末尾
+// isValidModelPattern 校验模型映射的请求模型模式：非空即有效。
+// * 可位于任意位置且允许出现多个（前缀 claude-*、后缀 *-luna、中缀 gpt-*-*）；
+// 不含 * 时按精确模型名处理。
 // 导出供表单组件使用实时校验
-export function isValidWildcardPattern(pattern: string): boolean {
-  const starIndex = pattern.indexOf('*')
-  if (starIndex === -1) return true // 无通配符，有效
-  // * 必须在末尾，且只能有一个
-  return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex
+export function isValidModelPattern(pattern: string): boolean {
+  return pattern.trim().length > 0
 }
 
 export type ModelRestrictionMode = 'whitelist' | 'mapping' | 'combined'
@@ -583,9 +582,9 @@ export function buildModelMappingObject(
       const from = m.from.trim()
       const to = m.to.trim()
       if (!from || !to) continue
-      // 校验通配符格式：* 只能放在末尾
-      if (!isValidWildcardPattern(from)) {
-        console.warn(`[buildModelMappingObject] Invalid wildcard pattern, skipped: ${from}`)
+      // 校验模式格式：* 可位于任意位置（如 *-luna）
+      if (!isValidModelPattern(from)) {
+        console.warn(`[buildModelMappingObject] Invalid model pattern, skipped: ${from}`)
         continue
       }
       // to 不允许包含通配符

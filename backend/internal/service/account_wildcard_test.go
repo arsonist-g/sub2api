@@ -49,6 +49,17 @@ func TestMatchWildcard(t *testing.T) {
 		{"wildcard partial match", "gemini-3*", "gemini-3-flash", true},
 		{"wildcard partial match 2", "gemini-3*", "gemini-3-pro-image", true},
 		{"wildcard partial mismatch", "gemini-3*", "gemini-2.5-flash", false},
+		{"wildcard suffix match", "*-luna", "gpt-5.6-luna", true},
+		{"wildcard suffix mismatch", "*-luna", "gpt-5.6-sol", false},
+		{"wildcard suffix matches bare name without separator", "*luna", "luna", true},
+		{"wildcard suffix requires literal separator", "*-luna", "luna", false},
+		{"wildcard infix match", "gpt-*-luna", "gpt-5.6-luna", true},
+		{"wildcard infix mismatch", "gpt-*-luna", "o5-5.6-luna", false},
+		{"multiple wildcards match", "gpt-*-*", "gpt-5.6-luna", true},
+		{"multiple wildcards require middle", "a*b*c", "ac", false},
+		{"multiple wildcards skip middle", "a*c", "abbbc", true},
+		{"leading wildcard matches bare suffix", "*abc", "abc", true},
+		{"leading wildcard mismatch", "*abc", "xab", false},
 
 		// 边界情况
 		{"empty pattern exact", "", "", true},
@@ -143,6 +154,47 @@ func TestMatchWildcardMappingResult(t *testing.T) {
 			expected:       "gemini-3-pro-high",
 			matched:        true,
 		},
+
+		// 泛通配符：* 可位于模式任意位置
+		{
+			name: "suffix wildcard",
+			mapping: map[string]string{
+				"*-luna": "cline-pass/deepseek-v4.1-flash",
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       "cline-pass/deepseek-v4.1-flash",
+			matched:        true,
+		},
+		{
+			name: "infix wildcard beats shorter suffix wildcard",
+			mapping: map[string]string{
+				"*":          "catch-all",
+				"*-luna":     "suffix-target",
+				"gpt-*-luna": "infix-target",
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       "infix-target",
+			matched:        true,
+		},
+		{
+			name: "exact key beats suffix wildcard",
+			mapping: map[string]string{
+				"gpt-5.6-luna": "exact-target",
+				"*-luna":       "suffix-target",
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       "exact-target",
+			matched:        true,
+		},
+		{
+			name: "suffix wildcard mismatch returns original",
+			mapping: map[string]string{
+				"*-luna": "suffix-target",
+			},
+			requestedModel: "gpt-5.6-sol",
+			expected:       "gpt-5.6-sol",
+			matched:        false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -229,6 +281,26 @@ func TestAccountIsModelSupported(t *testing.T) {
 				},
 			},
 			requestedModel: "gemini-3-flash",
+			expected:       false,
+		},
+		{
+			name: "suffix wildcard match supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"*-luna": "cline-pass/deepseek-v4.1-flash",
+				},
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       true,
+		},
+		{
+			name: "suffix wildcard mismatch not supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"*-luna": "cline-pass/deepseek-v4.1-flash",
+				},
+			},
+			requestedModel: "gpt-5.6-sol",
 			expected:       false,
 		},
 	}
@@ -328,6 +400,16 @@ func TestAccountGetMappedModel(t *testing.T) {
 			},
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5",
+		},
+		{
+			name: "suffix wildcard maps unrelated family",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"*-luna": "cline-pass/deepseek-v4.1-flash",
+				},
+			},
+			requestedModel: "gpt-5.6-luna",
+			expected:       "cline-pass/deepseek-v4.1-flash",
 		},
 	}
 

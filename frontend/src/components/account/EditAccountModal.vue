@@ -1342,7 +1342,7 @@
                   type="text"
                   :class="[
                     'input flex-1',
-                    !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : '',
+                    !isValidModelPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : '',
                     mapping.to.includes('*') ? '' : ''
                   ]"
                   :placeholder="t('admin.accounts.requestModel')"
@@ -1375,8 +1375,8 @@
                 </button>
               </div>
               <!-- 校验错误提示 -->
-              <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
-                {{ t('admin.accounts.wildcardOnlyAtEnd') }}
+              <p v-if="!isValidModelPattern(mapping.from)" class="text-xs text-red-500">
+                {{ t('admin.accounts.invalidModelPattern') }}
               </p>
               <p v-if="mapping.to.includes('*')" class="text-xs text-red-500">
                 {{ t('admin.accounts.targetNoWildcard') }}
@@ -3035,7 +3035,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
-  isValidWildcardPattern
+  isValidModelPattern
 } from '@/composables/useModelWhitelist'
 
 interface Props {

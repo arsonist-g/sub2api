@@ -145,6 +145,25 @@ describe('useModelWhitelist', () => {
     })
   })
 
+  it('mapping 模式保留任意位置的通配符映射（前缀/后缀/中缀）', () => {
+    const mapping = buildModelMappingObject('mapping', [], [
+      { from: 'claude-*', to: 'claude-sonnet-4-5' },
+      { from: '*-luna', to: 'cline-pass/deepseek-v4.1-flash' },
+      { from: 'gpt-*-luna', to: 'gpt-5.6-luna' }
+    ])
+
+    expect(mapping).toEqual({
+      'claude-*': 'claude-sonnet-4-5',
+      '*-luna': 'cline-pass/deepseek-v4.1-flash',
+      'gpt-*-luna': 'gpt-5.6-luna'
+    })
+  })
+
+  it('mapping 模式丢弃空模式，并保留"目标不能含通配符"的限制', () => {
+    expect(buildModelMappingObject('mapping', [], [{ from: '   ', to: 'gpt-5.4' }])).toBeNull()
+    expect(buildModelMappingObject('mapping', [], [{ from: 'gpt-*', to: 'gpt-*-x' }])).toBeNull()
+  })
+
   it('splitModelMappingObject 会把身份映射还原成白名单，其余保留为映射', () => {
     const parsed = splitModelMappingObject({
       'gpt-5.4': 'gpt-5.4',

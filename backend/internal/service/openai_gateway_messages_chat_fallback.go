@@ -165,17 +165,19 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:                   requestID,
-		Usage:                       usage,
-		Model:                       originalModel,
-		BillingModel:                billingModel,
-		UpstreamModel:               upstreamModel,
-		ReasoningEffort:             reasoningEffort,
-		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-		UpstreamProvider:            observedUpstreamProvider(c),
-		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:                      false,
-		Duration:                    time.Since(startTime),
+		RequestID:                     requestID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		ReasoningEffort:               reasoningEffort,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+		UpstreamProvider:              observedUpstreamProvider(c),
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -268,19 +270,21 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:                   requestID,
-		Usage:                       usage,
-		Model:                       originalModel,
-		BillingModel:                billingModel,
-		UpstreamModel:               upstreamModel,
-		ReasoningEffort:             reasoningEffort,
-		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-		UpstreamProvider:            observedUpstreamProvider(c),
-		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:                      true,
-		Duration:                    time.Since(startTime),
-		FirstTokenMs:                scan.FirstTokenMs,
-		ClientDisconnect:            clientDisconnected,
+		RequestID:                     requestID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		ReasoningEffort:               reasoningEffort,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+		UpstreamProvider:              observedUpstreamProvider(c),
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                        true,
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  scan.FirstTokenMs,
+		ClientDisconnect:              clientDisconnected,
 	}, nil
 }
 

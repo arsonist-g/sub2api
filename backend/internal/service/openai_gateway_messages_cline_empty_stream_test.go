@@ -128,6 +128,40 @@ func TestForwardAsAnthropic_ClineEmptyStreamBecomesRetryableFailover(t *testing.
 }
 
 // 关掉开关时必须维持既有行为：补一条全帧的空消息，而不是报错。
+// 成功的 cline 流必须把上游回显的模型与供应商一起记进结果。
+//
+// 这条回退路径原先两者都不记（实测 203 条 /v1/messages 请求里 0 条有上游响应模型），
+// 导致使用记录既看不到渠道、也永远不显示「上游响应模型不一致」那一行。
+func TestForwardAsAnthropic_ClineRecordsUpstreamResponseModelAndProvider(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(""))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	// 真实流里先有正文帧，末帧才带路由明细；末帧自身没有正文字段，单独发会被
+	// 判成空响应。
+	contentChunk := `{"id":"gen_01M3YD8MQPHGYHSMDRCMG098KM","object":"chat.completion.chunk",` +
+		`"model":"deepseek/deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"},` +
+		`"finish_reason":null}]}`
+	body := "data: " + contentChunk + "\n\ndata: " + clineStreamFinalChunkFixture + "\n\ndata: [DONE]\n\n"
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: &httpUpstreamRecorder{resp: clineStreamUpstreamResponse("text/event-stream", body)},
+	}
+
+	result, err := svc.ForwardAsAnthropic(
+		context.Background(), c, clineMessagesFallbackTestAccount(nil), clineEmptyStreamRequestBody(), "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "deepseek/deepseek-v4.1-flash", result.UpstreamResponseModel)
+	require.Equal(t, "deepseek", result.UpstreamProvider)
+	// 客户端从内容帧收到了正常文本，请求本身是成功的。
+	require.Contains(t, rec.Body.String(), "event: message_stop")
+}
+
 func TestGetClineEmptyStreamRetryInterval(t *testing.T) {
 	withInterval := func(value any) *Account {
 		return clineMessagesFallbackTestAccount(map[string]any{"cline_empty_stream_retry_interval_ms": value})

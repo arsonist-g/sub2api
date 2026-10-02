@@ -754,12 +754,12 @@ const formatOutputSpeed = (row: AdminUsageLog): string => {
 
 // 缓存率 = 缓存读取 / 全部输入 token（输入 + 缓存读取 + 缓存写入）。
 // 与输出速度一样是纯前端展示计算：分母为 0 时返回空串，调用方据此隐藏该元素。
+// 固定保留 3 位小数：命中率普遍贴近 100%，取整会把「几乎全命中」和「全命中」抹平。
 const formatCacheRate = (row: AdminUsageLog): string => {
   const read = row.cache_read_tokens ?? 0
   const total = (row.input_tokens ?? 0) + read + (row.cache_creation_tokens ?? 0)
   if (total <= 0) return ''
-  const rate = (read / total) * 100
-  return rate >= 10 ? `${Math.round(rate)}%` : `${rate.toFixed(1)}%`
+  return `${((read / total) * 100).toFixed(3)}%`
 }
 
 // Cost tooltip functions

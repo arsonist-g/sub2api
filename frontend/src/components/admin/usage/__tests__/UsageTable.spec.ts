@@ -851,7 +851,7 @@ describe('UsageTable cache rate', () => {
       },
     })
 
-  it('按缓存读取占全部输入 token 的比例展示', () => {
+  it('按缓存读取占全部输入 token 的比例展示，固定 3 位小数', () => {
     const wrapper = mountTable({
       request_id: 'req-cache',
       model: 'gpt-5.6-sol',
@@ -862,10 +862,24 @@ describe('UsageTable cache rate', () => {
     })
 
     // 300 / (100 + 300 + 100) = 60%
-    expect(wrapper.text()).toContain('60%')
+    expect(wrapper.text()).toContain('60.000%')
   })
 
-  it('不足 10% 时保留一位小数', () => {
+  it('贴近 100% 时保留小数，不取整成 100', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cache-near-full',
+      model: 'cline-pass/deepseek-v4.1-flash',
+      input_tokens: 247,
+      output_tokens: 10,
+      cache_read_tokens: 557312,
+    })
+
+    // 557312 / 557559 = 99.9557%：取整会变成 100，丢失「几乎全命中」这个信息
+    expect(wrapper.text()).toContain('99.956%')
+    expect(wrapper.text()).not.toContain('100.000%')
+  })
+
+  it('比例很小时同样保留 3 位小数', () => {
     const wrapper = mountTable({
       request_id: 'req-cache-small',
       model: 'gpt-5.6-sol',
@@ -874,10 +888,10 @@ describe('UsageTable cache rate', () => {
       cache_read_tokens: 3,
     })
 
-    expect(wrapper.text()).toContain('0.3%')
+    expect(wrapper.text()).toContain('0.300%')
   })
 
-  it('完全没有缓存命中时显示 0%', () => {
+  it('完全没有缓存命中时显示 0.000%', () => {
     const wrapper = mountTable({
       request_id: 'req-cache-miss',
       model: 'gpt-5.6-sol',
@@ -887,7 +901,7 @@ describe('UsageTable cache rate', () => {
       cache_creation_tokens: 50,
     })
 
-    expect(wrapper.text()).toContain('0.0%')
+    expect(wrapper.text()).toContain('0.000%')
   })
 
   it('没有缓存 token 时不展示缓存率', () => {
@@ -898,6 +912,6 @@ describe('UsageTable cache rate', () => {
       output_tokens: 10,
     })
 
-    expect(wrapper.text()).not.toContain('0.0%')
+    expect(wrapper.text()).not.toContain('0.000%')
   })
 })

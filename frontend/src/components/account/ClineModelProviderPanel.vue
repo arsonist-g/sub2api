@@ -249,6 +249,7 @@
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
           {{
             t('admin.accounts.cnProviders.clineModels.emptyStreamRetryCountHint', {
+              default: CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
               max: CLINE_EMPTY_STREAM_RETRY_MAX_COUNT
             })
           }}

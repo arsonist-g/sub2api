@@ -1128,12 +1128,15 @@ func (a *Account) GetPoolModeRetryCount() int {
 
 const (
 	// defaultClineEmptyStreamRetryCount 是 cline 空流同账号重试的默认次数。
-	defaultClineEmptyStreamRetryCount = 3
-	// maxClineEmptyStreamRetryCount 与 defaultPoolModeRetryCount 取同一数值：
-	// failover 循环的 effectiveSameAccountRetryLimit 以账号的同账号重试次数为基数，
-	// 而 SameAccountRetryMax 只能把它调小。非池模式账号的基数是 3，所以这里超过 3
-	// 的配置不会生效，取值上限就定为 3，避免「配了 5 实际只重试 3 次」的错觉。
-	maxClineEmptyStreamRetryCount = defaultPoolModeRetryCount
+	//
+	// 上游额度被抢时几乎瞬时回错，只有高频重试才能挤进别人让出的名额，所以默认值
+	// 直接给到上限而不是 3：账号 17 的 deepseek 供应商长时间处于团队额度耗尽状态，
+	// 少量重试等价于直接失败。
+	defaultClineEmptyStreamRetryCount = 60
+	// maxClineEmptyStreamRetryCount 是可选上限。该值通过错误的
+	// SameAccountRetryFloor 抬升 failover 循环的同账号重试预算，不再受池模式
+	// 次数（非池模式固定 3）限制。
+	maxClineEmptyStreamRetryCount = 60
 )
 
 // GetClineEmptyStreamRetryEnabled 返回 cline 账号是否把「上游 2xx 但整条流没有

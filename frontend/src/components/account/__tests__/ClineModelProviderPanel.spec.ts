@@ -225,7 +225,7 @@ describe('ClineModelProviderPanel', () => {
     expect((toggle.element as HTMLInputElement).checked).toBe(true)
 
     const count = wrapper.get('[data-testid="cline-empty-stream-retry-count"]')
-    expect((count.element as HTMLInputElement).value).toBe('3')
+    expect((count.element as HTMLInputElement).value).toBe('60')
   })
 
   it('取消勾选空响应重试时写回 false', async () => {
@@ -242,7 +242,7 @@ describe('ClineModelProviderPanel', () => {
     expect(disabled.find('[data-testid="cline-empty-stream-retry-count"]').exists()).toBe(false)
 
     const clamped = buildWrapper({ emptyStreamRetryCount: 99 })
-    expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('3')
+    expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('60')
 
     await clamped.get('[data-testid="cline-empty-stream-retry-count"]').setValue('2')
     expect(clamped.emitted('update:emptyStreamRetryCount')!.at(-1)![0]).toBe(2)

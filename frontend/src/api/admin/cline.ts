@@ -85,12 +85,14 @@ export async function probeProviders(
 
 /**
  * 空响应同账号重试次数上限，与后端 maxClineEmptyStreamRetryCount 保持一致。
- * 值为 3 是因为 failover 循环以账号的同账号重试次数（非池模式固定 3）为基数，
- * 错误自带的次数只能把它调小，再高的配置不会生效。
+ * 上限取 60 是因为上游额度被抢时几乎瞬时回错，需要高频长重试才有机会挤进空出的名额。
  */
-export const CLINE_EMPTY_STREAM_RETRY_MAX_COUNT = 3
-/** 空响应同账号重试次数默认值，与后端 defaultClineEmptyStreamRetryCount 保持一致。 */
-export const CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT = 3
+export const CLINE_EMPTY_STREAM_RETRY_MAX_COUNT = 60
+/**
+ * 空响应同账号重试次数默认值，与后端 defaultClineEmptyStreamRetryCount 保持一致。
+ * 默认即上限：少量重试对这种额度竞争等同于直接失败。
+ */
+export const CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT = 60
 
 /** 归一化凭据里的 cline 空响应重试次数：非法值回退默认值，并夹到 [0, 上限]。 */
 export function normalizeClineEmptyStreamRetryCount(value: unknown): number {

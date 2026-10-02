@@ -114,6 +114,51 @@ func TestEffectiveSameAccountRetryLimitHonorsErrorCapAndDisabledAccount(t *testi
 	require.Equal(t, 0, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{SameAccountRetryMax: 1}, account))
 }
 
+func TestEffectiveSameAccountRetryLimitHonorsErrorFloor(t *testing.T) {
+	// 非池模式账号的预算是固定兜底值，Floor 必须能把它抬上去——
+	// 这正是「上游额度被抢、需要高频长重试」所依赖的能力。
+	account := &service.Account{Type: service.AccountTypeAPIKey}
+	require.Equal(t, maxSameAccountRetries, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{}, account))
+
+	require.Equal(t, 60, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{SameAccountRetryFloor: 60}, account))
+	require.Equal(t, maxSameAccountRetries, effectiveSameAccountRetryLimit(&service.UpstreamFailoverError{SameAccountRetryFloor: 1}, account),
+		"低于账号预算的 Floor 不改变预算")
+
+	// Max 仍是错误级硬上限，低于 Floor 时按 Max 执行。
+	require.Equal(t, 2, effectiveSameAccountRetryLimit(
+		&service.UpstreamFailoverError{SameAccountRetryFloor: 60, SameAccountRetryMax: 2}, account))
+}
+
+func TestSameAccountRetryDelayForCustomBackoffRange(t *testing.T) {
+	err := &service.UpstreamFailoverError{
+		SameAccountRetryBaseDelay: 100 * time.Millisecond,
+		SameAccountRetryMaxDelay:  5 * time.Second,
+	}
+
+	for _, tc := range []struct {
+		retryCount int
+		want       time.Duration
+	}{
+		{1, 100 * time.Millisecond},
+		{2, 200 * time.Millisecond},
+		{3, 400 * time.Millisecond},
+		{4, 800 * time.Millisecond},
+		{5, 1600 * time.Millisecond},
+		{6, 3200 * time.Millisecond},
+		{7, 5 * time.Second},
+		{60, 5 * time.Second},
+	} {
+		require.Equal(t, tc.want, sameAccountRetryDelayFor(err, tc.retryCount), "retryCount=%d", tc.retryCount)
+	}
+
+	// 未声明区间的错误保持既有退避，不受本次扩展影响。
+	require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(&service.UpstreamFailoverError{}, 10))
+
+	// 只给上限时起始仍用默认值，且不超过上限。
+	onlyCeiling := &service.UpstreamFailoverError{SameAccountRetryMaxDelay: time.Second}
+	require.Equal(t, time.Second, sameAccountRetryDelayFor(onlyCeiling, 10))
+}
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------

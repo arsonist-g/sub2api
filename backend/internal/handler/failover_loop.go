@@ -62,14 +62,31 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	if failoverErr.SameAccountRetryDelay > 0 {
 		return failoverErr.SameAccountRetryDelay
 	}
-	if !failoverErr.RequestScopedTransient || retryCount <= 1 {
+	// 错误级自定义退避区间（如抢上游额度）：显式给出区间时按区间做指数退避，
+	// 否则沿用请求级瞬时错误的既有退避与固定间隔。
+	custom := failoverErr.SameAccountRetryBaseDelay > 0 || failoverErr.SameAccountRetryMaxDelay > 0
+	if !custom && (!failoverErr.RequestScopedTransient || retryCount <= 1) {
 		return sameAccountRetryDelay
 	}
 
-	delay := sameAccountRetryDelay
+	base := sameAccountRetryDelay
+	if failoverErr.SameAccountRetryBaseDelay > 0 {
+		base = failoverErr.SameAccountRetryBaseDelay
+	}
+	ceiling := maxRequestScopedRetryDelay
+	if failoverErr.SameAccountRetryMaxDelay > 0 {
+		ceiling = failoverErr.SameAccountRetryMaxDelay
+	}
+	if ceiling < base {
+		ceiling = base
+	}
+	if retryCount <= 1 {
+		return base
+	}
+	delay := base
 	for i := 1; i < retryCount; i++ {
-		if delay >= maxRequestScopedRetryDelay/2 {
-			return maxRequestScopedRetryDelay
+		if delay >= ceiling/2 {
+			return ceiling
 		}
 		delay *= 2
 	}
@@ -115,6 +132,11 @@ func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, 
 		return 0
 	}
 	limit := account.GetPoolModeRetryCount()
+	if failoverErr != nil && failoverErr.SameAccountRetryFloor > limit {
+		// 错误声明的预算高于账号配置时按错误声明的执行：某些失败要高频重试若干次
+		// 才能挤进上游空出的名额，账号级的池模式次数表达不了这个需求。
+		limit = failoverErr.SameAccountRetryFloor
+	}
 	if limit > 0 && failoverErr != nil && failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < limit {
 		return failoverErr.SameAccountRetryMax
 	}

@@ -113,7 +113,11 @@ func TestForwardAsAnthropic_ClineEmptyStreamBecomesRetryableFailover(t *testing.
 			require.Equal(t, http.StatusBadGateway, failoverErr.ClientStatusCode)
 			require.Equal(t, clineEmptyStreamClientMessage, failoverErr.ClientMessage)
 			require.True(t, failoverErr.RetryableOnSameAccount, "空响应必须在同一账号上重试")
-			require.Equal(t, defaultClineEmptyStreamRetryCount, failoverErr.SameAccountRetryMax)
+			// 用 Floor 抬升预算：SameAccountRetryMax 只能往低压，非池模式账号固定为 3。
+			require.Equal(t, defaultClineEmptyStreamRetryCount, failoverErr.SameAccountRetryFloor)
+			require.Zero(t, failoverErr.SameAccountRetryMax)
+			require.Equal(t, clineEmptyStreamRetryBaseDelay, failoverErr.SameAccountRetryBaseDelay)
+			require.Equal(t, clineEmptyStreamRetryMaxDelay, failoverErr.SameAccountRetryMaxDelay)
 			require.True(t, failoverErr.RequestScopedTransient, "不应据此惩罚账号")
 			// 原始证据留在 ResponseBody 上，供错误记录与错误透传规则使用。
 			require.Contains(t, string(failoverErr.ResponseBody), strings.SplitN(tc.body, "\n", 2)[0])

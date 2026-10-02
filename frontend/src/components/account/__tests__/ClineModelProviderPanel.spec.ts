@@ -242,9 +242,9 @@ describe('ClineModelProviderPanel', () => {
     expect(disabled.find('[data-testid="cline-empty-stream-retry-count"]').exists()).toBe(false)
 
     const clamped = buildWrapper({ emptyStreamRetryCount: 99 })
-    expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('10')
+    expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('3')
 
-    await clamped.get('[data-testid="cline-empty-stream-retry-count"]').setValue('5')
-    expect(clamped.emitted('update:emptyStreamRetryCount')!.at(-1)![0]).toBe(5)
+    await clamped.get('[data-testid="cline-empty-stream-retry-count"]').setValue('2')
+    expect(clamped.emitted('update:emptyStreamRetryCount')!.at(-1)![0]).toBe(2)
   })
 })

@@ -1740,6 +1740,9 @@ export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
+  // 上游回显的服务商（cline：provider_metadata.gateway.routing.finalProvider）。
+  // 其他平台不回显，因此只有 cline 的记录会带该字段。
+  upstream_provider?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
 

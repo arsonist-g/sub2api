@@ -32,6 +32,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // requested_model
 	"text",        // upstream_model
 	"text",        // upstream_response_model
+	"text",        // upstream_provider
 	"boolean",     // upstream_model_mismatch
 	"bigint",      // group_id
 	"bigint",      // subscription_id
@@ -232,6 +233,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -691,6 +693,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -785,6 +788,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				requested_model,
 				upstream_model,
 				upstream_response_model,
+				upstream_provider,
 				upstream_model_mismatch,
 				group_id,
 				subscription_id,
@@ -848,6 +852,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				requested_model,
 				upstream_model,
 				upstream_response_model,
+				upstream_provider,
 				upstream_model_mismatch,
 				group_id,
 				subscription_id,
@@ -951,6 +956,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -1040,6 +1046,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -1103,6 +1110,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -1174,6 +1182,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			requested_model,
 			upstream_model,
 			upstream_response_model,
+			upstream_provider,
 			upstream_model_mismatch,
 			group_id,
 			subscription_id,
@@ -1282,6 +1291,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	}
 	upstreamModel := nullString(log.UpstreamModel)
 	upstreamResponseModel := nullString(log.UpstreamResponseModel)
+	upstreamProvider := nullString(log.UpstreamProvider)
 	upstreamModelMismatch := nullBool(log.UpstreamModelMismatch)
 
 	var requestIDArg any
@@ -1303,6 +1313,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			nullString(&requestedModel),
 			upstreamModel,
 			upstreamResponseModel,
+			upstreamProvider,
 			upstreamModelMismatch,
 			groupID,
 			subscriptionID,

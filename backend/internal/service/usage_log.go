@@ -117,6 +117,10 @@ type UsageLog struct {
 	// UpstreamResponseModel is the model declared by the successful upstream
 	// response before client-facing model rewrites or protocol conversion.
 	UpstreamResponseModel *string
+	// UpstreamProvider is the upstream provider declared by the successful
+	// response (cline: provider_metadata.gateway.routing.finalProvider).
+	// Nil for platforms that do not declare one.
+	UpstreamProvider *string
 	// UpstreamModelMismatch is nil when no upstream model was observed. Otherwise
 	// it compares UpstreamResponseModel with the actual model sent upstream.
 	UpstreamModelMismatch *bool

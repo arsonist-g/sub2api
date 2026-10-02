@@ -247,6 +247,10 @@ type OpenAIForwardResult struct {
 	// response before any client-facing rewrite or protocol conversion.
 	UpstreamResponseModel         string
 	UpstreamResponseModelConflict bool
+	// UpstreamProvider is the upstream provider declared by the successful
+	// response (cline: provider_metadata.gateway.routing.finalProvider).
+	// Empty for platforms that do not declare one.
+	UpstreamProvider string
 	// UpstreamResponseServiceTier is the tier the upstream reports having used
 	// (response service_tier: "priority" / "default" / "flex" / ...); "" when not declared.
 	UpstreamResponseServiceTier string

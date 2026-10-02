@@ -86,6 +86,17 @@
               >
                 {{ isLikelyModelVariant(row) ? t('usage.modelVariant') : t('usage.modelMismatch') }}
               </span>
+              <!-- 上游回显的服务商：只有 cline 的记录带该字段 -->
+              <span v-if="row.upstream_provider" class="ml-1.5">
+                <span class="text-gray-400 dark:text-gray-500">{{ t('usage.upstreamProvider') }}:</span>
+                <span class="font-medium">{{ row.upstream_provider }}</span>
+              </span>
+            </div>
+            <div
+              v-else-if="row.upstream_provider"
+              class="break-all pl-3 text-[11px] text-gray-500 dark:text-gray-400"
+            >
+              <span class="mr-1">↳ {{ t('usage.upstreamProvider') }}:</span>{{ row.upstream_provider }}
             </div>
           </div>
         </template>
@@ -178,6 +189,13 @@
                   <span v-if="row.cache_creation_1h_tokens > 0" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-orange-100 text-orange-600 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:ring-orange-500/30">1h</span>
                   <span v-if="row.cache_ttl_overridden" :title="t('usage.cacheTtlOverriddenHint')" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30 cursor-help">R</span>
                 </div>
+                <span
+                  v-if="formatCacheRate(row)"
+                  class="text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-400"
+                  :title="t('usage.cacheRateHint')"
+                >
+                  {{ formatCacheRate(row) }}
+                </span>
               </div>
               <div v-if="hasImageInputTokens(row)" class="flex items-center gap-2">
                 <div class="inline-flex items-center gap-1">
@@ -732,6 +750,16 @@ const formatOutputSpeed = (row: AdminUsageLog): string => {
   if (!out || out <= 0 || duration == null || firstToken == null || duration - firstToken <= 0) return '-'
   const speed = out / ((duration - firstToken) / 1000)
   return `${speed >= 100 ? Math.round(speed) : speed.toFixed(1)} t/s`
+}
+
+// 缓存率 = 缓存读取 / 全部输入 token（输入 + 缓存读取 + 缓存写入）。
+// 与输出速度一样是纯前端展示计算：分母为 0 时返回空串，调用方据此隐藏该元素。
+const formatCacheRate = (row: AdminUsageLog): string => {
+  const read = row.cache_read_tokens ?? 0
+  const total = (row.input_tokens ?? 0) + read + (row.cache_creation_tokens ?? 0)
+  if (total <= 0) return ''
+  const rate = (read / total) * 100
+  return rate >= 10 ? `${Math.round(rate)}%` : `${rate.toFixed(1)}%`
 }
 
 // Cost tooltip functions

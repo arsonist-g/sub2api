@@ -585,6 +585,9 @@ type AdminUsageLog struct {
 	UpstreamReasoningEffort *string `json:"upstream_reasoning_effort,omitempty"`
 	// UpstreamResponseModel is the raw model declared by the upstream response.
 	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
+	// UpstreamProvider is the upstream provider declared by the response.
+	// Omitted for platforms that do not declare one.
+	UpstreamProvider *string `json:"upstream_provider,omitempty"`
 	// UpstreamModelMismatch is nil when the upstream did not declare a model.
 	UpstreamModelMismatch *bool `json:"upstream_model_mismatch,omitempty"`
 

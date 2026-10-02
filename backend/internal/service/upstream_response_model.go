@@ -36,6 +36,31 @@ type upstreamResponseModelObserver struct {
 	firstTier         string
 	firstTierConflict bool
 	terminalTier      string
+
+	// provider is the upstream provider the response declares having served the
+	// request (cline: provider_metadata.gateway.routing.finalProvider). Empty
+	// for platforms that do not declare one.
+	provider string
+}
+
+// ObserveProvider records the upstream provider declared by a response payload.
+// A later declaration overwrites an earlier one: cline only declares the
+// provider on the final content frame, and that frame is the authoritative one.
+func (o *upstreamResponseModelObserver) ObserveProvider(provider string) {
+	if o == nil {
+		return
+	}
+	if trimmed := strings.TrimSpace(provider); trimmed != "" {
+		o.provider = trimmed
+	}
+}
+
+// Provider returns the declared upstream provider, or "" when none was declared.
+func (o *upstreamResponseModelObserver) Provider() string {
+	if o == nil {
+		return ""
+	}
+	return o.provider
 }
 
 func (o *upstreamResponseModelObserver) Observe(model string, terminal bool) {
@@ -72,6 +97,9 @@ func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType 
 	model := firstValidTrimmedGJSONString(payload, "response.model", "model")
 	terminal := isUpstreamResponseModelTerminalEvent(eventType)
 	o.Observe(model, terminal)
+	// 供应商回显与模型声明无关（cline 只在最后一条内容帧里给），所以先于
+	// 下面的 model 早退提取。
+	o.ObserveProvider(upstreamProviderFromPayload(payload))
 	// Every payload that declares a service tier also declares a model, so
 	// model-free delta frames skip the extra lookups entirely.
 	if model == "" {

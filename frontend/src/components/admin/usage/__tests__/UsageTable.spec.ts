@@ -67,6 +67,8 @@ const messages: Record<string, string> = {
 	'usage.requestedModel': 'Requested',
 	'usage.sentUpstreamModel': 'Sent upstream',
 	'usage.upstreamResponseModel': 'Upstream response',
+	'usage.upstreamProvider': 'Upstream channel',
+	'usage.cacheRateHint': 'Share of prompt tokens served from cache',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
 }
@@ -773,5 +775,129 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+// 上游回显的渠道（cline 的 provider_metadata.gateway.routing.finalProvider）
+// 拼在「上游响应模型不一致」那一行；其他平台没有该字段，渲染不受影响。
+describe('UsageTable upstream provider', () => {
+  const mountTable = (row: Record<string, unknown>) =>
+    mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+  it('拼在上游响应模型不一致那一行', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cline',
+      model: 'cline-pass/deepseek-v4.1-flash',
+      upstream_model: 'cline-pass/deepseek-v4.1-flash',
+      upstream_response_model: 'deepseek/deepseek-v4.1-flash',
+      upstream_model_mismatch: true,
+      upstream_provider: 'deepseek',
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Upstream response')
+    expect(text).toContain('deepseek/deepseek-v4.1-flash')
+    expect(text).toContain('Upstream channel')
+    expect(text).toContain('deepseek')
+  })
+
+  it('没有模型不一致时单独占一行显示渠道', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cline-match',
+      model: 'cline-pass/deepseek-v4.1-flash',
+      upstream_response_model: 'cline-pass/deepseek-v4.1-flash',
+      upstream_model_mismatch: false,
+      upstream_provider: 'baseten',
+    })
+
+    expect(wrapper.text()).toContain('Upstream channel')
+    expect(wrapper.text()).toContain('baseten')
+  })
+
+  it('上游没有回显渠道时不显示该行', () => {
+    const wrapper = mountTable({
+      request_id: 'req-openai',
+      model: 'gpt-5.6-sol',
+      upstream_response_model: 'gpt-5.6-sol',
+      upstream_model_mismatch: false,
+    })
+
+    expect(wrapper.text()).not.toContain('Upstream channel')
+  })
+})
+
+// 缓存率是纯前端展示计算：缓存读取 /（输入 + 缓存读取 + 缓存写入）。
+describe('UsageTable cache rate', () => {
+  const mountTable = (row: Record<string, unknown>) =>
+    mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+  it('按缓存读取占全部输入 token 的比例展示', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cache',
+      model: 'gpt-5.6-sol',
+      input_tokens: 100,
+      output_tokens: 10,
+      cache_read_tokens: 300,
+      cache_creation_tokens: 100,
+    })
+
+    // 300 / (100 + 300 + 100) = 60%
+    expect(wrapper.text()).toContain('60%')
+  })
+
+  it('不足 10% 时保留一位小数', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cache-small',
+      model: 'gpt-5.6-sol',
+      input_tokens: 997,
+      output_tokens: 10,
+      cache_read_tokens: 3,
+    })
+
+    expect(wrapper.text()).toContain('0.3%')
+  })
+
+  it('完全没有缓存命中时显示 0%', () => {
+    const wrapper = mountTable({
+      request_id: 'req-cache-miss',
+      model: 'gpt-5.6-sol',
+      input_tokens: 50,
+      output_tokens: 10,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 50,
+    })
+
+    expect(wrapper.text()).toContain('0.0%')
+  })
+
+  it('没有缓存 token 时不展示缓存率', () => {
+    const wrapper = mountTable({
+      request_id: 'req-no-cache',
+      model: 'gpt-5.6-sol',
+      input_tokens: 100,
+      output_tokens: 10,
+    })
+
+    expect(wrapper.text()).not.toContain('0.0%')
   })
 })

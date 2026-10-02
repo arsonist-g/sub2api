@@ -1447,6 +1447,7 @@
           v-model:model-whitelist="allowedModels"
           v-model:empty-stream-retry="clineEmptyStreamRetry"
           v-model:empty-stream-retry-count="clineEmptyStreamRetryCount"
+          v-model:empty-stream-retry-interval="clineEmptyStreamRetryInterval"
           :api-key="apiKeyValue"
           :account-mode="accountMode"
         />
@@ -3890,6 +3891,7 @@ import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import {
   CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS,
   type ClineModelProviders
 } from '@/api/admin/cline'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
@@ -4146,9 +4148,10 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 })
 // Cline：逐模型的上游供应商偏好，写入 credentials.model_providers
 const clineModelProviders = ref<ClineModelProviders>({})
-/** 空响应重试：缺省开启，次数缺省 3，与后端默认一致。 */
+/** 空响应重试：缺省开启、60 次、间隔 2000ms，与后端默认一致。 */
 const clineEmptyStreamRetry = ref(true)
 const clineEmptyStreamRetryCount = ref(CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT)
+const clineEmptyStreamRetryInterval = ref(CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS)
 const isCNPlatform = computed(
   () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode' || form.platform === 'cline'
 )
@@ -5259,6 +5262,7 @@ const resetForm = () => {
   clineModelProviders.value = {}
   clineEmptyStreamRetry.value = true
   clineEmptyStreamRetryCount.value = CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT
+  clineEmptyStreamRetryInterval.value = CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5760,6 +5764,9 @@ const handleSubmit = async () => {
       }
       if (clineEmptyStreamRetryCount.value !== CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT) {
         credentials.cline_empty_stream_retry_count = clineEmptyStreamRetryCount.value
+      }
+      if (clineEmptyStreamRetryInterval.value !== CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS) {
+        credentials.cline_empty_stream_retry_interval_ms = clineEmptyStreamRetryInterval.value
       }
     }
   }

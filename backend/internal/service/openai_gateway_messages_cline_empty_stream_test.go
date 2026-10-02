@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
@@ -116,8 +117,8 @@ func TestForwardAsAnthropic_ClineEmptyStreamBecomesRetryableFailover(t *testing.
 			// 用 Floor 抬升预算：SameAccountRetryMax 只能往低压，非池模式账号固定为 3。
 			require.Equal(t, defaultClineEmptyStreamRetryCount, failoverErr.SameAccountRetryFloor)
 			require.Zero(t, failoverErr.SameAccountRetryMax)
-			require.Equal(t, clineEmptyStreamRetryBaseDelay, failoverErr.SameAccountRetryBaseDelay)
-			require.Equal(t, clineEmptyStreamRetryMaxDelay, failoverErr.SameAccountRetryMaxDelay)
+			// 固定间隔轮询，不做退避：名额可能就在下一次轮询空出来。
+			require.Equal(t, 2*time.Second, failoverErr.SameAccountRetryDelay)
 			require.True(t, failoverErr.RequestScopedTransient, "不应据此惩罚账号")
 			// 原始证据留在 ResponseBody 上，供错误记录与错误透传规则使用。
 			require.Contains(t, string(failoverErr.ResponseBody), strings.SplitN(tc.body, "\n", 2)[0])
@@ -127,6 +128,33 @@ func TestForwardAsAnthropic_ClineEmptyStreamBecomesRetryableFailover(t *testing.
 }
 
 // 关掉开关时必须维持既有行为：补一条全帧的空消息，而不是报错。
+func TestGetClineEmptyStreamRetryInterval(t *testing.T) {
+	withInterval := func(value any) *Account {
+		return clineMessagesFallbackTestAccount(map[string]any{"cline_empty_stream_retry_interval_ms": value})
+	}
+
+	require.Equal(t, 2*time.Second, clineMessagesFallbackTestAccount(nil).GetClineEmptyStreamRetryInterval(),
+		"未配置时用默认值")
+	require.Equal(t, 100*time.Millisecond, withInterval(float64(100)).GetClineEmptyStreamRetryInterval())
+	require.Equal(t, 5*time.Second, withInterval(float64(5000)).GetClineEmptyStreamRetryInterval())
+	require.Equal(t, 100*time.Millisecond, withInterval(float64(10)).GetClineEmptyStreamRetryInterval(),
+		"低于下限夹到 100ms")
+	require.Equal(t, 5*time.Second, withInterval(float64(99999)).GetClineEmptyStreamRetryInterval(),
+		"高于上限夹到 5s")
+	require.Equal(t, 2*time.Second, withInterval("nonsense").GetClineEmptyStreamRetryInterval(),
+		"非法值回退默认值")
+}
+
+// 间隔可配置（给性能较差的机器拉长用），并原样传给同账号重试。
+func TestForwardAsAnthropic_ClineEmptyStreamRetryIntervalIsConfigurable(t *testing.T) {
+	account := clineMessagesFallbackTestAccount(map[string]any{"cline_empty_stream_retry_interval_ms": float64(300)})
+	_, err := forwardClineMessages(t, account, clineStreamUpstreamResponse("text/event-stream", "data: [DONE]\n\n"))
+
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, 300*time.Millisecond, failoverErr.SameAccountRetryDelay)
+}
+
 func TestForwardAsAnthropic_ClineEmptyStreamKeepsFramedMessageWhenDisabled(t *testing.T) {
 	account := clineMessagesFallbackTestAccount(map[string]any{"cline_empty_stream_retry": false})
 	rec, err := forwardClineMessages(t, account, clineStreamUpstreamResponse("text/event-stream", "data: [DONE]\n\n"))

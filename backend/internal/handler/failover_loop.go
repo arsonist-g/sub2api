@@ -62,31 +62,14 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	if failoverErr.SameAccountRetryDelay > 0 {
 		return failoverErr.SameAccountRetryDelay
 	}
-	// 错误级自定义退避区间（如抢上游额度）：显式给出区间时按区间做指数退避，
-	// 否则沿用请求级瞬时错误的既有退避与固定间隔。
-	custom := failoverErr.SameAccountRetryBaseDelay > 0 || failoverErr.SameAccountRetryMaxDelay > 0
-	if !custom && (!failoverErr.RequestScopedTransient || retryCount <= 1) {
+	if !failoverErr.RequestScopedTransient || retryCount <= 1 {
 		return sameAccountRetryDelay
 	}
 
-	base := sameAccountRetryDelay
-	if failoverErr.SameAccountRetryBaseDelay > 0 {
-		base = failoverErr.SameAccountRetryBaseDelay
-	}
-	ceiling := maxRequestScopedRetryDelay
-	if failoverErr.SameAccountRetryMaxDelay > 0 {
-		ceiling = failoverErr.SameAccountRetryMaxDelay
-	}
-	if ceiling < base {
-		ceiling = base
-	}
-	if retryCount <= 1 {
-		return base
-	}
-	delay := base
+	delay := sameAccountRetryDelay
 	for i := 1; i < retryCount; i++ {
-		if delay >= ceiling/2 {
-			return ceiling
+		if delay >= maxRequestScopedRetryDelay/2 {
+			return maxRequestScopedRetryDelay
 		}
 		delay *= 2
 	}

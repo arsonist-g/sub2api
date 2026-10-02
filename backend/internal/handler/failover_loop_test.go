@@ -129,34 +129,24 @@ func TestEffectiveSameAccountRetryLimitHonorsErrorFloor(t *testing.T) {
 		&service.UpstreamFailoverError{SameAccountRetryFloor: 60, SameAccountRetryMax: 2}, account))
 }
 
-func TestSameAccountRetryDelayForCustomBackoffRange(t *testing.T) {
+// 显式给出间隔时必须是固定值：抢上游额度靠的是持续轮询，一旦做指数退避，
+// 重试会恰好睡在名额空出的那一刻而错过它。
+func TestSameAccountRetryDelayForFixedIntervalDoesNotRamp(t *testing.T) {
 	err := &service.UpstreamFailoverError{
-		SameAccountRetryBaseDelay: 100 * time.Millisecond,
-		SameAccountRetryMaxDelay:  5 * time.Second,
+		RequestScopedTransient: true,
+		SameAccountRetryDelay:  100 * time.Millisecond,
+	}
+	for _, retryCount := range []int{1, 2, 3, 7, 30, 59, 60} {
+		require.Equal(t, 100*time.Millisecond, sameAccountRetryDelayFor(err, retryCount), "retryCount=%d", retryCount)
 	}
 
-	for _, tc := range []struct {
-		retryCount int
-		want       time.Duration
-	}{
-		{1, 100 * time.Millisecond},
-		{2, 200 * time.Millisecond},
-		{3, 400 * time.Millisecond},
-		{4, 800 * time.Millisecond},
-		{5, 1600 * time.Millisecond},
-		{6, 3200 * time.Millisecond},
-		{7, 5 * time.Second},
-		{60, 5 * time.Second},
-	} {
-		require.Equal(t, tc.want, sameAccountRetryDelayFor(err, tc.retryCount), "retryCount=%d", tc.retryCount)
+	err.SameAccountRetryDelay = 2 * time.Second
+	for _, retryCount := range []int{1, 10, 60} {
+		require.Equal(t, 2*time.Second, sameAccountRetryDelayFor(err, retryCount), "retryCount=%d", retryCount)
 	}
 
-	// 未声明区间的错误保持既有退避，不受本次扩展影响。
+	// 未声明间隔的错误保持既有退避，不受本次扩展影响。
 	require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(&service.UpstreamFailoverError{}, 10))
-
-	// 只给上限时起始仍用默认值，且不超过上限。
-	onlyCeiling := &service.UpstreamFailoverError{SameAccountRetryMaxDelay: time.Second}
-	require.Equal(t, time.Second, sameAccountRetryDelayFor(onlyCeiling, 10))
 }
 
 // ---------------------------------------------------------------------------

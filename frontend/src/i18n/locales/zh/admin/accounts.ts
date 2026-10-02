@@ -416,10 +416,13 @@ export default {
           catalogTruncated: '仅显示前 {count} 条（共 {total} 条），请用筛选缩小范围',
           emptyStreamRetry: '空响应重试',
           emptyStreamRetryHint:
-            '上游返回成功但整条流没有任何内容时，按上游失败处理并在同一账号重试，而不是回一条空消息。只对 cline 生效；重试间隔从 100ms 起按倍递增，到 5s 为止。',
+            '上游返回成功但整条流没有任何内容时，按上游失败处理并在同一账号重试，而不是回一条空消息。只对 cline 生效。',
           emptyStreamRetryCount: '同账号重试次数',
           emptyStreamRetryCountHint:
             '0 表示不原地重试；默认 {default}，最大 {max}。上游额度被抢占时需要足够多次重试才有机会挤进空出的名额。',
+          emptyStreamRetryInterval: '同账号重试间隔（毫秒）',
+          emptyStreamRetryIntervalHint:
+            '固定间隔，不做退避——名额可能在下一次轮询就空出来，退避会让重试正好睡在那一刻。默认 {default}，范围 {min}–{max}；调大可降低性能开销。',
           pipeline: {
             planner: 'planner',
             direct: 'direct',

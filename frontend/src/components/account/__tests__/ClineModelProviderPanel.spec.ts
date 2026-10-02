@@ -218,7 +218,7 @@ describe('ClineModelProviderPanel', () => {
     expect(inList.emitted('update:modelWhitelist')!.at(-1)![0]).toEqual([])
   })
 
-  it('空响应重试默认开启并回填默认次数', () => {
+  it('空响应重试默认开启并回填默认次数与间隔', () => {
     const wrapper = buildWrapper()
 
     const toggle = wrapper.get('[data-testid="cline-empty-stream-retry"]')
@@ -226,6 +226,9 @@ describe('ClineModelProviderPanel', () => {
 
     const count = wrapper.get('[data-testid="cline-empty-stream-retry-count"]')
     expect((count.element as HTMLInputElement).value).toBe('60')
+
+    const interval = wrapper.get('[data-testid="cline-empty-stream-retry-interval"]')
+    expect((interval.element as HTMLInputElement).value).toBe('2000')
   })
 
   it('取消勾选空响应重试时写回 false', async () => {
@@ -236,15 +239,29 @@ describe('ClineModelProviderPanel', () => {
     expect(wrapper.emitted('update:emptyStreamRetry')!.at(-1)![0]).toBe(false)
   })
 
-  it('按凭据回填关闭状态，并把超限次数夹到上限', async () => {
+  it('按凭据回填关闭状态，并把超限次数与间隔夹到边界', async () => {
     const disabled = buildWrapper({ emptyStreamRetry: false })
     expect((disabled.get('[data-testid="cline-empty-stream-retry"]').element as HTMLInputElement).checked).toBe(false)
     expect(disabled.find('[data-testid="cline-empty-stream-retry-count"]').exists()).toBe(false)
+    expect(disabled.find('[data-testid="cline-empty-stream-retry-interval"]').exists()).toBe(false)
 
     const clamped = buildWrapper({ emptyStreamRetryCount: 99 })
     expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('60')
+    expect((clamped.get('[data-testid="cline-empty-stream-retry-interval"]').element as HTMLInputElement).value).toBe('2000')
 
     await clamped.get('[data-testid="cline-empty-stream-retry-count"]').setValue('2')
     expect(clamped.emitted('update:emptyStreamRetryCount')!.at(-1)![0]).toBe(2)
+  })
+
+  it('间隔可改，越界值被夹到 100–5000ms', async () => {
+    const over = buildWrapper({ emptyStreamRetryInterval: 99999 })
+    expect((over.get('[data-testid="cline-empty-stream-retry-interval"]').element as HTMLInputElement).value).toBe('5000')
+
+    const under = buildWrapper({ emptyStreamRetryInterval: 1 })
+    expect((under.get('[data-testid="cline-empty-stream-retry-interval"]').element as HTMLInputElement).value).toBe('100')
+
+    const custom = buildWrapper({ emptyStreamRetryInterval: 100 })
+    await custom.get('[data-testid="cline-empty-stream-retry-interval"]').setValue('350')
+    expect(custom.emitted('update:emptyStreamRetryInterval')!.at(-1)![0]).toBe(350)
   })
 })

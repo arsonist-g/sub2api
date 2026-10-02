@@ -285,13 +285,6 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 // clineEmptyStreamClientMessage 是空响应耗尽重试后回给客户端的说明。
 const clineEmptyStreamClientMessage = "Upstream returned an empty response, please retry later"
 
-// cline 空响应的同账号重试退避区间。上游额度被抢时几乎瞬时回错，先用 100ms 快试，
-// 逐步放大到 5s 上限，避免长期处于上限后的无谓等待。
-const (
-	clineEmptyStreamRetryBaseDelay = 100 * time.Millisecond
-	clineEmptyStreamRetryMaxDelay  = 5 * time.Second
-)
-
 // clineEmptyStreamFailoverError 判定上游是否「返回 2xx 但整条流没有任何内容帧」，
 // 命中时返回一个同账号可重试的 failover 错误；未命中返回 nil。
 //
@@ -346,8 +339,9 @@ func (s *OpenAIGatewayService) clineEmptyStreamFailoverError(
 		// 用 Floor 而不是 Max：Max 只能把账号的重试预算往下压，抬不上去，
 		// 而非池模式账号的预算固定为 3。
 		failoverErr.SameAccountRetryFloor = retryCount
-		failoverErr.SameAccountRetryBaseDelay = clineEmptyStreamRetryBaseDelay
-		failoverErr.SameAccountRetryMaxDelay = clineEmptyStreamRetryMaxDelay
+		// 固定间隔轮询，不做指数退避：名额可能在下一次轮询就空出来，
+		// 退避会让重试恰好睡在名额空出的那一刻。
+		failoverErr.SameAccountRetryDelay = account.GetClineEmptyStreamRetryInterval()
 	}
 	// 重试后大概率自愈；且 cline 分组通常只有单个账号，摘号会让整分钟不可用，
 	// 因此明确不据此惩罚账号。

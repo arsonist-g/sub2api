@@ -257,6 +257,7 @@
           v-model:model-whitelist="allowedModels"
           v-model:empty-stream-retry="editClineEmptyStreamRetry"
           v-model:empty-stream-retry-count="editClineEmptyStreamRetryCount"
+          v-model:empty-stream-retry-interval="editClineEmptyStreamRetryInterval"
           :api-key="editApiKey"
           :account-id="account.id"
           :account-mode="editAccountMode"
@@ -3013,7 +3014,9 @@ import {
 } from '@/components/account/credentialsBuilder'
 import {
   CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS,
   normalizeClineEmptyStreamRetryCount,
+  normalizeClineEmptyStreamRetryInterval,
   type ClineModelProviders
 } from '@/api/admin/cline'
 import {
@@ -3132,9 +3135,10 @@ const editZhipuOrganization = ref('')
 const editZhipuProject = ref('')
 // Cline：逐模型的上游供应商偏好，编辑后写回 credentials.model_providers
 const editClineModelProviders = ref<ClineModelProviders>({})
-/** 空响应重试：缺省开启，次数缺省 3，与后端默认一致。 */
+/** 空响应重试：缺省开启、60 次、间隔 2000ms，与后端默认一致。 */
 const editClineEmptyStreamRetry = ref(true)
 const editClineEmptyStreamRetryCount = ref(CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT)
+const editClineEmptyStreamRetryInterval = ref(CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS)
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -4067,6 +4071,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         editClineEmptyStreamRetryCount.value = normalizeClineEmptyStreamRetryCount(
           credentials.cline_empty_stream_retry_count
         )
+        editClineEmptyStreamRetryInterval.value = normalizeClineEmptyStreamRetryInterval(
+          credentials.cline_empty_stream_retry_interval_ms
+        )
       }
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -4867,6 +4874,11 @@ const handleSubmit = async () => {
             delete newCredentials.cline_empty_stream_retry_count
           } else {
             newCredentials.cline_empty_stream_retry_count = editClineEmptyStreamRetryCount.value
+          }
+          if (editClineEmptyStreamRetryInterval.value === CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS) {
+            delete newCredentials.cline_empty_stream_retry_interval_ms
+          } else {
+            newCredentials.cline_empty_stream_retry_interval_ms = editClineEmptyStreamRetryInterval.value
           }
         }
       }

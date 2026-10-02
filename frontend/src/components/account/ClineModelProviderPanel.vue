@@ -255,6 +255,31 @@
           }}
         </p>
       </div>
+
+      <div v-if="emptyStreamRetry" class="mt-3">
+        <label class="input-label">
+          {{ t('admin.accounts.cnProviders.clineModels.emptyStreamRetryInterval') }}
+        </label>
+        <input
+          :value="emptyStreamRetryInterval"
+          type="number"
+          :min="CLINE_EMPTY_STREAM_RETRY_INTERVAL_MIN_MS"
+          :max="CLINE_EMPTY_STREAM_RETRY_INTERVAL_MAX_MS"
+          step="100"
+          class="input"
+          data-testid="cline-empty-stream-retry-interval"
+          @input="onEmptyStreamRetryIntervalChange(($event.target as HTMLInputElement).value)"
+        />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{
+            t('admin.accounts.cnProviders.clineModels.emptyStreamRetryIntervalHint', {
+              min: CLINE_EMPTY_STREAM_RETRY_INTERVAL_MIN_MS,
+              max: CLINE_EMPTY_STREAM_RETRY_INTERVAL_MAX_MS,
+              default: CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS
+            })
+          }}
+        </p>
+      </div>
     </div>
   </section>
 </template>
@@ -267,9 +292,13 @@ import Select from '@/components/common/Select.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import {
   CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS,
+  CLINE_EMPTY_STREAM_RETRY_INTERVAL_MAX_MS,
+  CLINE_EMPTY_STREAM_RETRY_INTERVAL_MIN_MS,
   CLINE_EMPTY_STREAM_RETRY_MAX_COUNT,
   fetchModels as fetchClineModels,
   normalizeClineEmptyStreamRetryCount,
+  normalizeClineEmptyStreamRetryInterval,
   probeProviders as probeClineProviders,
   type ClineCatalogEntry,
   type ClineModelGroup,
@@ -312,10 +341,13 @@ const props = withDefaults(
     emptyStreamRetry?: boolean
     /** 空响应同账号重试次数；缺省使用默认值。 */
     emptyStreamRetryCount?: number
+    /** 空响应同账号重试间隔（毫秒）；缺省使用默认值。 */
+    emptyStreamRetryInterval?: number
   }>(),
   {
     emptyStreamRetry: true,
-    emptyStreamRetryCount: CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT
+    emptyStreamRetryCount: CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+    emptyStreamRetryInterval: CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS
   }
 )
 
@@ -324,6 +356,7 @@ const emit = defineEmits<{
   (e: 'update:modelWhitelist', value: string[]): void
   (e: 'update:emptyStreamRetry', value: boolean): void
   (e: 'update:emptyStreamRetryCount', value: number): void
+  (e: 'update:emptyStreamRetryInterval', value: number): void
 }>()
 
 /** 空响应重试开关与次数；取值由 props 默认值保证始终有值。 */
@@ -338,6 +371,14 @@ function onEmptyStreamRetryChange(value: boolean) {
 
 function onEmptyStreamRetryCountChange(value: string) {
   emit('update:emptyStreamRetryCount', normalizeClineEmptyStreamRetryCount(value))
+}
+
+const emptyStreamRetryInterval = computed(() =>
+  normalizeClineEmptyStreamRetryInterval(props.emptyStreamRetryInterval)
+)
+
+function onEmptyStreamRetryIntervalChange(value: string) {
+  emit('update:emptyStreamRetryInterval', normalizeClineEmptyStreamRetryInterval(value))
 }
 
 const { t } = useI18n()

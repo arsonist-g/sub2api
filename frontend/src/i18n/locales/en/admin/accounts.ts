@@ -213,10 +213,13 @@ export default {
           catalogTruncated: 'Showing the first {count} of {total} — narrow it down with the filter.',
           emptyStreamRetry: 'Retry on empty response',
           emptyStreamRetryHint:
-            'When the upstream reports success but the stream carries no content at all, treat it as an upstream failure and retry on the same account instead of returning an empty message. Cline only; the retry interval starts at 100ms, doubles up to 5s, then stays there.',
+            'When the upstream reports success but the stream carries no content at all, treat it as an upstream failure and retry on the same account instead of returning an empty message. Cline only.',
           emptyStreamRetryCount: 'Same-account retries',
           emptyStreamRetryCountHint:
             '0 disables retrying in place; default {default}, maximum {max}. A contested upstream quota needs enough attempts to slip into a freed slot.',
+          emptyStreamRetryInterval: 'Same-account retry interval (ms)',
+          emptyStreamRetryIntervalHint:
+            'A fixed interval, never backed off — a slot can free up on the very next poll, and backing off would sleep right through it. Default {default}, range {min}-{max}; raising it lowers overhead.',
           pipeline: {
             planner: 'planner',
             direct: 'direct',

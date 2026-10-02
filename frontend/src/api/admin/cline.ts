@@ -101,6 +101,26 @@ export function normalizeClineEmptyStreamRetryCount(value: unknown): number {
   return Math.min(Math.max(Math.trunc(parsed), 0), CLINE_EMPTY_STREAM_RETRY_MAX_COUNT)
 }
 
+/** 空响应同账号重试间隔的下限（毫秒），与后端 minClineEmptyStreamRetryIntervalMs 保持一致。 */
+export const CLINE_EMPTY_STREAM_RETRY_INTERVAL_MIN_MS = 100
+/** 空响应同账号重试间隔的上限（毫秒），与后端 maxClineEmptyStreamRetryIntervalMs 保持一致。 */
+export const CLINE_EMPTY_STREAM_RETRY_INTERVAL_MAX_MS = 5000
+/** 空响应同账号重试间隔的默认值（毫秒），与后端 defaultClineEmptyStreamRetryIntervalMs 保持一致。 */
+export const CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS = 2000
+
+/**
+ * 归一化凭据里的 cline 空响应重试间隔：非法值回退默认值，并夹到 [下限, 上限]。
+ * 该间隔是固定值，不做退避——退避会让重试恰好睡在名额空出的那一刻。
+ */
+export function normalizeClineEmptyStreamRetryInterval(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return CLINE_EMPTY_STREAM_RETRY_INTERVAL_DEFAULT_MS
+  return Math.min(
+    Math.max(Math.trunc(parsed), CLINE_EMPTY_STREAM_RETRY_INTERVAL_MIN_MS),
+    CLINE_EMPTY_STREAM_RETRY_INTERVAL_MAX_MS
+  )
+}
+
 export default {
   fetchModels,
   probeProviders

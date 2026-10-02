@@ -1137,6 +1137,14 @@ const (
 	// SameAccountRetryFloor 抬升 failover 循环的同账号重试预算，不再受池模式
 	// 次数（非池模式固定 3）限制。
 	maxClineEmptyStreamRetryCount = 60
+
+	// 同账号重试的固定间隔区间（毫秒）。有意不做指数退避：名额可能在下一次轮询就
+	// 空出来，退避会让重试恰好睡在名额空出的那一刻。下限 100ms 是抢名额最积极的
+	// 取值，上限 5s 与默认值 2s 是给性能较差的部署留的调节余量——拉长间隔可以减少
+	// 轮询消耗。
+	defaultClineEmptyStreamRetryIntervalMs = 2000
+	minClineEmptyStreamRetryIntervalMs     = 100
+	maxClineEmptyStreamRetryIntervalMs     = 5000
 )
 
 // GetClineEmptyStreamRetryEnabled 返回 cline 账号是否把「上游 2xx 但整条流没有
@@ -1178,6 +1186,49 @@ func (a *Account) GetClineEmptyStreamRetryCount() int {
 		return maxClineEmptyStreamRetryCount
 	}
 	return count
+}
+
+// GetClineEmptyStreamRetryInterval 返回 cline 空响应的同账号重试固定间隔。
+//
+// 有意不做指数退避：名额可能在下一次轮询就空出来，退避会让重试恰好睡在名额空出的
+// 那一刻而错过它。未配置或非法时回退默认值，并夹到 [100ms, 5s]。
+func (a *Account) GetClineEmptyStreamRetryInterval() time.Duration {
+	ms := defaultClineEmptyStreamRetryIntervalMs
+	if a != nil && a.Credentials != nil {
+		if raw, ok := a.Credentials["cline_empty_stream_retry_interval_ms"]; ok && raw != nil {
+			if parsed, ok := credentialIntValue(raw); ok {
+				ms = parsed
+			}
+		}
+	}
+	if ms < minClineEmptyStreamRetryIntervalMs {
+		ms = minClineEmptyStreamRetryIntervalMs
+	}
+	if ms > maxClineEmptyStreamRetryIntervalMs {
+		ms = maxClineEmptyStreamRetryIntervalMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// credentialIntValue 解析凭据里的整数字段（JSON 反序列化后通常是 float64）。
+func credentialIntValue(value any) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i), true
+		}
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func parsePoolModeRetryCount(value any) int {

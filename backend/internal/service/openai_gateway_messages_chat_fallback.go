@@ -136,7 +136,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 5. Convert response
 	if clientStream {
-		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsAnthropic(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsAnthropic(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -181,6 +181,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -241,6 +242,10 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 
+	if failoverErr := s.clineEmptyStreamFailoverError(account, resp, scan, requestID, originalModel, upstreamModel); failoverErr != nil {
+		return nil, failoverErr
+	}
+
 	// Finalize: close open blocks + emit message_delta/message_stop.
 	finalEvents := apicompat.FinalizeChatCompletionsAnthropicStream(anthropicState)
 	if !clientDisconnected {
@@ -275,4 +280,95 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		FirstTokenMs:                scan.FirstTokenMs,
 		ClientDisconnect:            clientDisconnected,
 	}, nil
+}
+
+// clineEmptyStreamClientMessage 是空响应耗尽重试后回给客户端的说明。
+const clineEmptyStreamClientMessage = "Upstream returned an empty response, please retry later"
+
+// clineEmptyStreamFailoverError 判定上游是否「返回 2xx 但整条流没有任何内容帧」，
+// 命中时返回一个同账号可重试的 failover 错误；未命中返回 nil。
+//
+// 上游（cline 这类聚合网关）可能回一个非 SSE 的 JSON 体、一个带 error 字段的
+// data 帧，或者一条直接结束的空流。这几种形态目前无法与「合法但没有输出」区分，
+// 而对客户端来说都表现为空回复——原先会被静默补成全帧空消息，客户端只能自己
+// 重试，且运维侧看不到任何记录。所以统一按上游失败处理，交给 failover 循环重试，
+// 重试用尽后落一条错误记录。
+//
+// 判定只对 cline 平台且账号开关打开时生效，其他平台维持既有行为，避免把合法的
+// 空回复（例如 max_tokens 截断）误判成上游故障。
+func (s *OpenAIGatewayService) clineEmptyStreamFailoverError(
+	account *Account,
+	resp *http.Response,
+	scan ccStreamScanState,
+	requestID string,
+	originalModel string,
+	upstreamModel string,
+) *UpstreamFailoverError {
+	if account == nil || account.Platform != PlatformCline {
+		return nil
+	}
+	if !account.GetClineEmptyStreamRetryEnabled() {
+		return nil
+	}
+	if scan.Err != nil || scan.UsableChunks > 0 {
+		return nil
+	}
+
+	logger.L().Warn("cline.empty_stream_failover",
+		zap.Int64("account_id", account.ID),
+		zap.String("request_id", requestID),
+		zap.String("model", originalModel),
+		zap.String("upstream_model", upstreamModel),
+		zap.Bool("saw_data_frame", scan.SawDataFrame),
+		zap.Bool("saw_done", scan.SawDone),
+		zap.String("in_band_error", scan.InBandError),
+		zap.String("upstream_content_type", resp.Header.Get("Content-Type")),
+		zap.String("upstream_request_id", resp.Header.Get("x-request-id")),
+		zap.String("body_head", s.clineEmptyStreamBodyForLog(scan.RawHead)),
+	)
+
+	retryCount := account.GetClineEmptyStreamRetryCount()
+	failoverErr := newOpenAIUpstreamFailoverError(
+		http.StatusBadGateway,
+		resp.Header,
+		scan.RawHead,
+		clineEmptyStreamUpstreamMessage(scan),
+		retryCount > 0,
+	)
+	if retryCount > 0 {
+		failoverErr.SameAccountRetryMax = retryCount
+	}
+	// 重试后大概率自愈；且 cline 分组通常只有单个账号，摘号会让整分钟不可用，
+	// 因此明确不据此惩罚账号。
+	failoverErr.RequestScopedTransient = true
+	failoverErr.ClientStatusCode = http.StatusBadGateway
+	failoverErr.ClientMessage = clineEmptyStreamClientMessage
+	return failoverErr
+}
+
+// clineEmptyStreamUpstreamMessage 汇总空响应的可读原因，用于错误记录与日志。
+func clineEmptyStreamUpstreamMessage(scan ccStreamScanState) string {
+	if scan.InBandError != "" {
+		return scan.InBandError
+	}
+	if !scan.SawDataFrame {
+		return "upstream response was not an SSE stream"
+	}
+	if scan.SawDone {
+		return "upstream stream ended without any content"
+	}
+	return "upstream stream ended without content or done sentinel"
+}
+
+// clineEmptyStreamBodyForLog 按配置决定是否把上游响应开头写进日志，默认不落盘，
+// 避免把上游正文（可能含用户内容片段）写进日志。
+func (s *OpenAIGatewayService) clineEmptyStreamBodyForLog(head []byte) string {
+	if s == nil || s.cfg == nil || !s.cfg.Gateway.LogUpstreamErrorBody || len(head) == 0 {
+		return ""
+	}
+	maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+	if maxBytes <= 0 || maxBytes > len(head) {
+		maxBytes = len(head)
+	}
+	return string(head[:maxBytes])
 }

@@ -255,6 +255,8 @@
           v-if="account.platform === 'cline'"
           v-model="editClineModelProviders"
           v-model:model-whitelist="allowedModels"
+          v-model:empty-stream-retry="editClineEmptyStreamRetry"
+          v-model:empty-stream-retry-count="editClineEmptyStreamRetryCount"
           :api-key="editApiKey"
           :account-id="account.id"
           :account-mode="editAccountMode"
@@ -3009,7 +3011,11 @@ import {
   type CnNativeApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
-import type { ClineModelProviders } from '@/api/admin/cline'
+import {
+  CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  normalizeClineEmptyStreamRetryCount,
+  type ClineModelProviders
+} from '@/api/admin/cline'
 import {
   formatDateTime,
   formatDateTimeLocalInput,
@@ -3126,6 +3132,9 @@ const editZhipuOrganization = ref('')
 const editZhipuProject = ref('')
 // Cline：逐模型的上游供应商偏好，编辑后写回 credentials.model_providers
 const editClineModelProviders = ref<ClineModelProviders>({})
+/** 空响应重试：缺省开启，次数缺省 3，与后端默认一致。 */
+const editClineEmptyStreamRetry = ref(true)
+const editClineEmptyStreamRetryCount = ref(CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT)
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -4053,6 +4062,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       if (newAccount.platform === 'cline') {
         editClineModelProviders.value =
           (credentials.model_providers as ClineModelProviders | undefined) ?? {}
+        // 凭据里没有该键时后端按开启处理，前端回填同样默认开启。
+        editClineEmptyStreamRetry.value = credentials.cline_empty_stream_retry !== false
+        editClineEmptyStreamRetryCount.value = normalizeClineEmptyStreamRetryCount(
+          credentials.cline_empty_stream_retry_count
+        )
       }
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -4842,6 +4856,17 @@ const handleSubmit = async () => {
             newCredentials.model_providers = editClineModelProviders.value
           } else {
             delete newCredentials.model_providers
+          }
+          // 空响应重试：与后端缺省一致的取值不落盘，让后端走默认逻辑。
+          if (editClineEmptyStreamRetry.value) {
+            delete newCredentials.cline_empty_stream_retry
+          } else {
+            newCredentials.cline_empty_stream_retry = false
+          }
+          if (editClineEmptyStreamRetryCount.value === CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT) {
+            delete newCredentials.cline_empty_stream_retry_count
+          } else {
+            newCredentials.cline_empty_stream_retry_count = editClineEmptyStreamRetryCount.value
           }
         }
       }

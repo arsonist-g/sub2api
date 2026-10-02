@@ -211,6 +211,50 @@
         </div>
       </div>
     </div>
+    <!-- 空响应重试：上游返回成功但整条流没有任何内容时按失败处理并同账号重试。
+         默认开启；凭据里不落盘时后端同样按开启处理。 -->
+    <div class="border-t border-gray-200 p-3 dark:border-dark-600">
+      <label class="flex items-start gap-2">
+        <input
+          type="checkbox"
+          class="mt-0.5"
+          data-testid="cline-empty-stream-retry"
+          :checked="emptyStreamRetry"
+          @change="onEmptyStreamRetryChange(($event.target as HTMLInputElement).checked)"
+        />
+        <span class="min-w-0">
+          <span class="block text-sm font-medium text-gray-900 dark:text-white">
+            {{ t('admin.accounts.cnProviders.clineModels.emptyStreamRetry') }}
+          </span>
+          <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.cnProviders.clineModels.emptyStreamRetryHint') }}
+          </span>
+        </span>
+      </label>
+
+      <div v-if="emptyStreamRetry" class="mt-3">
+        <label class="input-label">
+          {{ t('admin.accounts.cnProviders.clineModels.emptyStreamRetryCount') }}
+        </label>
+        <input
+          :value="emptyStreamRetryCount"
+          type="number"
+          min="0"
+          :max="CLINE_EMPTY_STREAM_RETRY_MAX_COUNT"
+          step="1"
+          class="input"
+          data-testid="cline-empty-stream-retry-count"
+          @input="onEmptyStreamRetryCountChange(($event.target as HTMLInputElement).value)"
+        />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{
+            t('admin.accounts.cnProviders.clineModels.emptyStreamRetryCountHint', {
+              max: CLINE_EMPTY_STREAM_RETRY_MAX_COUNT
+            })
+          }}
+        </p>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -221,7 +265,10 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Select from '@/components/common/Select.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import {
+  CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  CLINE_EMPTY_STREAM_RETRY_MAX_COUNT,
   fetchModels as fetchClineModels,
+  normalizeClineEmptyStreamRetryCount,
   probeProviders as probeClineProviders,
   type ClineCatalogEntry,
   type ClineModelGroup,
@@ -250,21 +297,47 @@ interface PanelSection {
   truncated: number
 }
 
-const props = defineProps<{
-  /** 新建流程：直接使用输入框中的 Key */
-  apiKey?: string
-  /** 编辑流程：使用后端已存储的 Key */
-  accountId?: number
-  accountMode?: 'coding' | 'payg'
-  modelValue: ClineModelProviders
-  /** 账号模型白名单（credentials.model_mapping 中 from===to 的条目）。 */
-  modelWhitelist?: string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 新建流程：直接使用输入框中的 Key */
+    apiKey?: string
+    /** 编辑流程：使用后端已存储的 Key */
+    accountId?: number
+    accountMode?: 'coding' | 'payg'
+    modelValue: ClineModelProviders
+    /** 账号模型白名单（credentials.model_mapping 中 from===to 的条目）。 */
+    modelWhitelist?: string[]
+    /** 空响应重试开关；缺省开启，与后端缺省一致。 */
+    emptyStreamRetry?: boolean
+    /** 空响应同账号重试次数；缺省使用默认值。 */
+    emptyStreamRetryCount?: number
+  }>(),
+  {
+    emptyStreamRetry: true,
+    emptyStreamRetryCount: CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT
+  }
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ClineModelProviders): void
   (e: 'update:modelWhitelist', value: string[]): void
+  (e: 'update:emptyStreamRetry', value: boolean): void
+  (e: 'update:emptyStreamRetryCount', value: number): void
 }>()
+
+/** 空响应重试开关与次数；取值由 props 默认值保证始终有值。 */
+const emptyStreamRetry = computed(() => props.emptyStreamRetry)
+const emptyStreamRetryCount = computed(() =>
+  normalizeClineEmptyStreamRetryCount(props.emptyStreamRetryCount)
+)
+
+function onEmptyStreamRetryChange(value: boolean) {
+  emit('update:emptyStreamRetry', value)
+}
+
+function onEmptyStreamRetryCountChange(value: string) {
+  emit('update:emptyStreamRetryCount', normalizeClineEmptyStreamRetryCount(value))
+}
 
 const { t } = useI18n()
 

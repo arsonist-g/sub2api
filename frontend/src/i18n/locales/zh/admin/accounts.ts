@@ -414,6 +414,11 @@ export default {
           catalogShow: '展开',
           catalogHide: '收起',
           catalogTruncated: '仅显示前 {count} 条（共 {total} 条），请用筛选缩小范围',
+          emptyStreamRetry: '空响应重试',
+          emptyStreamRetryHint:
+            '上游返回成功但整条流没有任何内容时，按上游失败处理并在同一账号重试，而不是回一条空消息。只对 cline 生效。',
+          emptyStreamRetryCount: '同账号重试次数',
+          emptyStreamRetryCountHint: '0 表示不原地重试；默认 3，最大 {max}。',
           pipeline: {
             planner: 'planner',
             direct: 'direct',

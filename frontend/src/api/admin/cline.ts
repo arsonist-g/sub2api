@@ -83,6 +83,18 @@ export async function probeProviders(
   return data
 }
 
+/** 空响应同账号重试次数上限，与后端 maxClineEmptyStreamRetryCount 保持一致。 */
+export const CLINE_EMPTY_STREAM_RETRY_MAX_COUNT = 10
+/** 空响应同账号重试次数默认值，与后端 defaultClineEmptyStreamRetryCount 保持一致。 */
+export const CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT = 3
+
+/** 归一化凭据里的 cline 空响应重试次数：非法值回退默认值，并夹到 [0, 上限]。 */
+export function normalizeClineEmptyStreamRetryCount(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT
+  return Math.min(Math.max(Math.trunc(parsed), 0), CLINE_EMPTY_STREAM_RETRY_MAX_COUNT)
+}
+
 export default {
   fetchModels,
   probeProviders

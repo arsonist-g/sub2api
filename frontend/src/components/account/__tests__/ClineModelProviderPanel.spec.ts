@@ -8,7 +8,11 @@ const { fetchModels, probeProviders } = vi.hoisted(() => ({
   probeProviders: vi.fn()
 }))
 
-vi.mock('@/api/admin/cline', () => ({ fetchModels, probeProviders }))
+// 只替换网络调用，保留模块里的常量与归一化函数（面板会用到）。
+vi.mock('@/api/admin/cline', async () => {
+  const actual = await vi.importActual<typeof import('@/api/admin/cline')>('@/api/admin/cline')
+  return { ...actual, fetchModels, probeProviders }
+})
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -212,5 +216,35 @@ describe('ClineModelProviderPanel', () => {
     expect(removeButton.text()).toBe('admin.accounts.cnProviders.clineModels.whitelistRemove')
     await removeButton.trigger('click')
     expect(inList.emitted('update:modelWhitelist')!.at(-1)![0]).toEqual([])
+  })
+
+  it('空响应重试默认开启并回填默认次数', () => {
+    const wrapper = buildWrapper()
+
+    const toggle = wrapper.get('[data-testid="cline-empty-stream-retry"]')
+    expect((toggle.element as HTMLInputElement).checked).toBe(true)
+
+    const count = wrapper.get('[data-testid="cline-empty-stream-retry-count"]')
+    expect((count.element as HTMLInputElement).value).toBe('3')
+  })
+
+  it('取消勾选空响应重试时写回 false', async () => {
+    const wrapper = buildWrapper()
+
+    await wrapper.get('[data-testid="cline-empty-stream-retry"]').setValue(false)
+
+    expect(wrapper.emitted('update:emptyStreamRetry')!.at(-1)![0]).toBe(false)
+  })
+
+  it('按凭据回填关闭状态，并把超限次数夹到上限', async () => {
+    const disabled = buildWrapper({ emptyStreamRetry: false })
+    expect((disabled.get('[data-testid="cline-empty-stream-retry"]').element as HTMLInputElement).checked).toBe(false)
+    expect(disabled.find('[data-testid="cline-empty-stream-retry-count"]').exists()).toBe(false)
+
+    const clamped = buildWrapper({ emptyStreamRetryCount: 99 })
+    expect((clamped.get('[data-testid="cline-empty-stream-retry-count"]').element as HTMLInputElement).value).toBe('10')
+
+    await clamped.get('[data-testid="cline-empty-stream-retry-count"]').setValue('5')
+    expect(clamped.emitted('update:emptyStreamRetryCount')!.at(-1)![0]).toBe(5)
   })
 })

@@ -1445,6 +1445,8 @@
           v-if="form.platform === 'cline'"
           v-model="clineModelProviders"
           v-model:model-whitelist="allowedModels"
+          v-model:empty-stream-retry="clineEmptyStreamRetry"
+          v-model:empty-stream-retry-count="clineEmptyStreamRetryCount"
           :api-key="apiKeyValue"
           :account-mode="accountMode"
         />
@@ -3886,7 +3888,10 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
-import type { ClineModelProviders } from '@/api/admin/cline'
+import {
+  CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT,
+  type ClineModelProviders
+} from '@/api/admin/cline'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4141,6 +4146,9 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 })
 // Cline：逐模型的上游供应商偏好，写入 credentials.model_providers
 const clineModelProviders = ref<ClineModelProviders>({})
+/** 空响应重试：缺省开启，次数缺省 3，与后端默认一致。 */
+const clineEmptyStreamRetry = ref(true)
+const clineEmptyStreamRetryCount = ref(CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT)
 const isCNPlatform = computed(
   () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek' || form.platform === 'opencode' || form.platform === 'cline'
 )
@@ -5249,6 +5257,8 @@ const resetForm = () => {
   apiProtocol.value = 'adaptive'
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   clineModelProviders.value = {}
+  clineEmptyStreamRetry.value = true
+  clineEmptyStreamRetryCount.value = CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5742,6 +5752,15 @@ const handleSubmit = async () => {
     // Cline：逐模型上游供应商偏好（空对象不落盘）
     if (form.platform === 'cline' && Object.keys(clineModelProviders.value).length > 0) {
       credentials.model_providers = clineModelProviders.value
+    }
+    // Cline 空响应重试：与后端缺省一致的取值不落盘，让后端走默认逻辑。
+    if (form.platform === 'cline') {
+      if (!clineEmptyStreamRetry.value) {
+        credentials.cline_empty_stream_retry = false
+      }
+      if (clineEmptyStreamRetryCount.value !== CLINE_EMPTY_STREAM_RETRY_DEFAULT_COUNT) {
+        credentials.cline_empty_stream_retry_count = clineEmptyStreamRetryCount.value
+      }
     }
   }
 

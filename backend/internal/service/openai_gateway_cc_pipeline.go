@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -253,7 +254,23 @@ type ccStreamScanState struct {
 	// 非 nil 时调用方必须跳过 finalize 并返回 usage-incomplete 错误，避免
 	// 把上游截断伪装成正常收尾。
 	Err error
+	// SawDataFrame 表示响应体里至少出现过一行 data: 帧。为 false 说明上游根本
+	// 没按 SSE 回（例如把非流式 JSON 体回给了流式请求），调用方可据此区分
+	// 「不是流」和「是流但没内容」。
+	SawDataFrame bool
+	// UsableChunks 统计产生了实际输出的 chunk（正文 / 推理 / 工具调用）。
+	// 为 0 表示整条流没有任何可用内容。
+	UsableChunks int
+	// InBandError 记录 data: 负载里携带的上游错误。上游有时代替正常 chunk 回一个
+	// {"error":...} 或 {"success":false} 对象；它能反序列化成零值 chunk，不识别
+	// 就会被当成空 chunk 静默丢弃。
+	InBandError string
+	// RawHead 保留响应体开头若干字节，仅供空响应诊断，不参与转发。
+	RawHead []byte
 }
+
+// ccStreamRawHeadMaxBytes 是 ccStreamScanState.RawHead 的截断上限。
+const ccStreamRawHeadMaxBytes = 2048
 
 // scanCCStream 驱动两条 CC 回退路径共享的 SSE 读循环：提取 data 行、在 [DONE]
 // 哨兵处停止、保留最新 usage、记录首 token 时延，并把每个解析成功的 chunk 交给
@@ -272,10 +289,12 @@ func (s *OpenAIGatewayService) scanCCStream(
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
+		st.appendRawHead(line)
 		payload, ok := extractOpenAISSEDataLine(line)
 		if !ok {
 			continue
 		}
+		st.SawDataFrame = true
 		payload = strings.TrimSpace(payload)
 		if payload == "" {
 			continue
@@ -294,6 +313,19 @@ func (s *OpenAIGatewayService) scanCCStream(
 		if u := extractCCStreamUsage(payload); u != nil {
 			st.Usage = *u
 		}
+		if st.InBandError == "" {
+			if msg, ok := extractCCInBandError(payload); ok {
+				st.InBandError = msg
+				// 上游用错误对象代替了内容帧。此时若还没有任何可用输出，就不写
+				// 任何东西、直接结束扫描，让调用方按上游失败处理（例如 cline 的
+				// 空响应重试）；这样客户端一个字节都还没收到，失败仍可改走
+				// failover。已经输出过内容则维持既有行为继续读完，避免把客户端
+				// 已经消费到的流截断。
+				if st.UsableChunks == 0 {
+					break
+				}
+			}
+		}
 
 		var chunk apicompat.ChatCompletionsChunk
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
@@ -302,6 +334,9 @@ func (s *OpenAIGatewayService) scanCCStream(
 				zap.String("request_id", requestID),
 			)
 			continue
+		}
+		if chatChunkStartsResponsesOutput(&chunk) {
+			st.UsableChunks++
 		}
 		if st.FirstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
 			ms := int(time.Since(startTime).Milliseconds())
@@ -320,6 +355,52 @@ func (s *OpenAIGatewayService) scanCCStream(
 		st.Err = err
 	}
 	return st
+}
+
+// appendRawHead 累积响应体开头的行，供空响应诊断使用；超过上限后不再追加。
+// scanner 已剥掉行尾换行，这里按行补齐，只求还原大致形态。
+func (st *ccStreamScanState) appendRawHead(line string) {
+	if len(st.RawHead) >= ccStreamRawHeadMaxBytes {
+		return
+	}
+	st.RawHead = append(st.RawHead, line...)
+	if len(st.RawHead) < ccStreamRawHeadMaxBytes {
+		st.RawHead = append(st.RawHead, '\n')
+	}
+	if len(st.RawHead) > ccStreamRawHeadMaxBytes {
+		st.RawHead = st.RawHead[:ccStreamRawHeadMaxBytes]
+	}
+}
+
+// extractCCInBandError 识别 CC 流负载里携带的上游错误。
+//
+// 上游（尤其 cline 这类聚合网关）有时代替正常 chunk 回一个错误对象，形态可能是
+// {"error":{"message":...}}、{"error":"empty response content"} 或
+// {"error":...,"success":false}。这些负载能反序列化成零值 chunk，不识别就会被
+// 当成空 chunk 静默丢弃，最终表现为「上游 2xx 但回复为空」。
+//
+// 判定刻意收紧：只有真的带了 message / code / type 的对象、非空字符串，或显式的
+// success=false 才算命中，避免把 {"error":null}、{"error":{}} 这类空壳误判成故障。
+func extractCCInBandError(payload string) (string, bool) {
+	switch errNode := gjson.Get(payload, "error"); errNode.Type {
+	case gjson.String:
+		if text := strings.TrimSpace(errNode.String()); text != "" {
+			return text, true
+		}
+	case gjson.JSON:
+		for _, path := range []string{"error.message", "error.code", "error.type"} {
+			if value := strings.TrimSpace(gjson.Get(payload, path).String()); value != "" {
+				return value, true
+			}
+		}
+	}
+	if gjson.Get(payload, "success").Type == gjson.False {
+		if msg := strings.TrimSpace(gjson.Get(payload, "message").String()); msg != "" {
+			return msg, true
+		}
+		return "upstream reported success=false", true
+	}
+	return "", false
 }
 
 // logCCStreamMissingDoneSentinel 记录"上游未发 [DONE] 哨兵即结束"的 debug 日志。

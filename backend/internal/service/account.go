@@ -1126,6 +1126,53 @@ func (a *Account) GetPoolModeRetryCount() int {
 	return count
 }
 
+const (
+	// defaultClineEmptyStreamRetryCount 是 cline 空流同账号重试的默认次数。
+	defaultClineEmptyStreamRetryCount = 3
+	maxClineEmptyStreamRetryCount     = 10
+)
+
+// GetClineEmptyStreamRetryEnabled 返回 cline 账号是否把「上游 2xx 但整条流没有
+// 任何内容帧」判定为上游失败，并交给 failover 循环做同账号重试。
+//
+// 只对 cline 平台生效，其他平台的空响应行为保持不变。凭据里没有该键时默认开启，
+// 这样不依赖前端是否暴露开关即可生效。
+func (a *Account) GetClineEmptyStreamRetryEnabled() bool {
+	if a == nil || a.Platform != PlatformCline || a.Credentials == nil {
+		return false
+	}
+	raw, ok := a.Credentials["cline_empty_stream_retry"]
+	if !ok || raw == nil {
+		return true
+	}
+	enabled, ok := raw.(bool)
+	if !ok {
+		return true
+	}
+	return enabled
+}
+
+// GetClineEmptyStreamRetryCount 返回 cline 空流的同账号重试次数上限。
+// 未配置或非法时回退默认值；负数按 0（不重试）处理，过大截断到上限。
+func (a *Account) GetClineEmptyStreamRetryCount() int {
+	if a == nil || a.Credentials == nil {
+		return defaultClineEmptyStreamRetryCount
+	}
+	raw, ok := a.Credentials["cline_empty_stream_retry_count"]
+	if !ok || raw == nil {
+		return defaultClineEmptyStreamRetryCount
+	}
+	// 复用池模式的凭据整数解析，两者默认值一致。
+	count := parsePoolModeRetryCount(raw)
+	if count < 0 {
+		return 0
+	}
+	if count > maxClineEmptyStreamRetryCount {
+		return maxClineEmptyStreamRetryCount
+	}
+	return count
+}
+
 func parsePoolModeRetryCount(value any) int {
 	switch v := value.(type) {
 	case int:
